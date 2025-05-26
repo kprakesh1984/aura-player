@@ -21,12 +21,12 @@
   "build": {
     "appId": "com.rakeshkp.auraplayer",
     "productName": "Aura Player",
-    "executableName": "AuraPlayer", 
+    "executableName": "AuraPlayer",
     "copyright": "Copyright © ${new Date().getFullYear()} Rakesh KP",
     "asar": true,
     "directories": {
       "output": "dist_electron",
-      "buildResources": "assets/icons" 
+      "buildResources": "assets/icons"
     },
     "files": [
       "**/*",
@@ -50,7 +50,7 @@
         "name": "MP3 Audio File",
         "description": "MP3 Audio File played by Aura Player",
         "role": "Viewer",
-        "icon": "mp3_icon.ico", 
+        "icon": "mp3_icon.ico",
         "mimeType": "audio/mpeg"
       },
       {
@@ -58,7 +58,7 @@
         "name": "M4A Audio File",
         "description": "M4A Audio File played by Aura Player",
         "role": "Viewer",
-        "icon": "audio_icon.ico", 
+        "icon": "audio_icon.ico",
         "mimeType": "audio/mp4"
       },
       {
@@ -92,19 +92,25 @@
       }
     ],
     "win": {
-      "icon": "icon.ico", 
+      "icon": "icon.ico",
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "msi",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "requestedExecutionLevel": "asInvoker"
@@ -115,29 +121,36 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Aura Player", 
+      "shortcutName": "Aura Player",
       "menuCategory": "AudioVideo",
-      "installerIcon": "icon.ico", 
-      "uninstallerIcon": "icon.ico", 
+      "installerIcon": "icon.ico",
+      "uninstallerIcon": "icon.ico",
       "uninstallDisplayName": "${productName} Uninstaller"
     },
-    "msi": { 
-      "oneClick": false, 
-      "perMachine": true,                           
+    "msi": {
+      "oneClick": false,
+      "perMachine": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Aura Player", 
-      "upgradeCode": "{10b1cbe9-7301-4cd8-8810-aa5d12db39ca}" 
+      "shortcutName": "Aura Player",
+      "upgradeCode": "{10b1cbe9-7301-4cd8-8810-aa5d12db39ca}"
     },
     "mac": {
-      "icon": "icon.icns", 
+      "icon": "icon.icns",
       "category": "public.app-category.music",
-      "target": ["dmg", "zip"]
+      "target": [
+        "dmg",
+        "zip"
+      ]
     },
     "linux": {
-      "icon": ".",                   
+      "icon": ".",
       "category": "AudioVideo;Audio;",
-      "target": ["AppImage", "deb", "rpm"]
+      "target": [
+        "AppImage",
+        "deb",
+        "rpm"
+      ]
     }
   }
 }

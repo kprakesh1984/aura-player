@@ -34,181 +34,126 @@ body {
 
 /* Track Info Display */
 .track-info {
-    margin-bottom: 15px;
+    margin-bottom: 10px;
     font-size: 0.85em;
     color: #bbb;
     display: flex;
     align-items: center;
     width: 100%;
-    height: 2em;
-    line-height: 2em;
+    height: 2.2em; 
+    line-height: 2.2em;
     overflow: hidden;
 }
-
     .track-info > span:first-child {
-        margin-right: 5px;
-        white-space: nowrap;
-        flex-shrink: 0;
-        color: #bbb;
+        display: none; 
     }
-
 .song-name-container {
-    flex-grow: 1;
-    min-width: 0;
-    overflow: hidden;
+    min-width: 0; 
+    overflow: hidden; 
     white-space: nowrap;
-    text-align: left;
-    line-height: inherit; /* Changed from normal for better consistency with .track-info */
+    text-align: center; 
+    line-height: inherit;
+    border: 1px solid #404040; 
+    background-color: #2c2c2c; 
+    border-radius: 15px;   
+    padding: 0 10px;     
+    flex-grow: 1; 
+    margin-left: calc(35px + 10px); 
+    margin-right: calc(35px + 10px);
 }
-
+.song-name-container.placeholder-text #songName { color: #888; font-weight: normal; text-shadow: none; }
 #songName {
-    font-weight: 700;
-    color: #00aeff;
-    display: inline-block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: middle; /* Helps with inline-block alignment within line-height */
-    line-height: inherit; /* Inherit line-height from parent */
+    font-weight: 700; color: #00aeff; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+    display: inline-block; max-width: 100%; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; vertical-align: middle;
+    line-height: normal;
 }
-
-#songName.scrolling-active {
-    max-width: none;
-    text-overflow: clip;
-    overflow: visible;
-    padding-left: 100%;
-    animation: scroll-text-animation 10s linear infinite 0s;
-}
-
-@keyframes scroll-text-animation {
-    0% { transform: translateX(0%); }
-    10% { transform: translateX(0%); }
-    80% { transform: translateX(-100%); }
-    100% { transform: translateX(-100%); }
-}
+#songName.scrolling-active { max-width: none; text-overflow: clip; overflow: visible; transform: translateX(100%); animation: continuous-scroll-text 10s linear infinite; text-align: left !important; }
+@keyframes continuous-scroll-text { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
 
 /* Seek Controls */
-.seek-controls { display: flex; align-items: center; margin-bottom: 15px; }
+.seek-controls { display: flex; align-items: center; margin-top: 8px; margin-bottom: 15px; }
 #seekBar { flex-grow: 1; margin: 0 10px; -webkit-appearance: none; appearance: none; width: 100%; height: 8px; background: #555; outline: none; border-radius: 4px; cursor: pointer; }
     #seekBar::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; background: #00aeff; cursor: pointer; border-radius: 50%; border: 2px solid #333; }
     #seekBar::-moz-range-thumb { width: 16px; height: 16px; background: #00aeff; cursor: pointer; border-radius: 50%; border: 2px solid #333; }
-#currentTime, #duration { font-size: 0.85em; color: #aaa; min-width: 35px; text-align: center; }
+#currentTime, #duration { font-size: 0.85em; color: #aaa; min-width: 35px; text-align: center; flex-shrink: 0; }
 
-/* Playback, Volume, File Controls General */
+/* Playback, Volume, File Controls General & 3D Button Styles */
 .playback-controls, .volume-controls, .file-controls { display: flex; align-items: center; margin-bottom: 15px; }
 .playback-controls, .file-controls { justify-content: center; }
 .volume-controls { justify-content: center; }
-
-/* Buttons */
-button { font-family: 'Roboto', 'Segoe UI', sans-serif; }
-
-.playback-controls button {
-    background: #444; border: 1px solid #555; color: #ddd; font-size: 1.2em;
-    width: 45px; height: 45px; border-radius: 50%; margin: 0 5px; cursor: pointer;
-    transition: background-color 0.2s, transform 0.1s, color 0.2s;
-    display: flex; justify-content: center; align-items: center;
-    font-weight: 500; flex-shrink: 0;
-}
-    .playback-controls button:hover { background-color: #555; }
-    .playback-controls button:active { background-color: #666; transform: scale(0.95); }
-
-    /* Shuffle/Repeat Button Specific States */
-    .playback-controls button#shuffleBtn.shuffle-active { /* Shuffle Mode ON */
-        background-color: #007bff; /* Blue for shuffle */
-        color: white;
-    }
-    .playback-controls button#shuffleBtn.repeat-one-active { /* Repeat One Mode ON */
-        background-color: #28a745; /* Green for repeat-one */
-        color: white;
-    }
-    /* If shuffleBtn is not active in any mode, it uses the default styles above */
-
-
-/* Volume Controls Icon Styling */
+.playback-controls button, .file-controls button, .playlist-header .close-playlist-btn { font-family: 'Roboto', 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; cursor: pointer; transition: background-color 0.15s ease-out, transform 0.1s ease-out, box-shadow 0.15s ease-out, border-color 0.15s ease-out; font-weight: 500; color: #d0d0d0; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5); background-color: #4a4a4a; background-image: linear-gradient(to bottom, #585858 0%, #3c3c3c 100%); border: 1px solid #2a2a2a; box-shadow: inset 0 1px 0px rgba(255, 255, 255, 0.1), inset 0 -1px 1px rgba(0, 0, 0, 0.2), 0 2px 3px rgba(0, 0, 0, 0.2); }
+.playback-controls button:hover, .file-controls button:hover, .playlist-header .close-playlist-btn:hover { background-color: #555555; background-image: linear-gradient(to bottom, #626262 0%, #484848 100%); border-color: #333333; }
+.playback-controls button:active, .file-controls button:active, .playlist-header .close-playlist-btn:active { transform: translateY(1px) scale(0.98); background-color: #303030; background-image: linear-gradient(to top, #404040 0%, #282828 100%); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0,0,0,0.1); color: #c0c0c0; }
+.playback-controls { flex-wrap: nowrap; min-width: 270px; }
+.playback-controls button { font-size: 1.1em; width: 40px; height: 40px; border-radius: 50%; margin: 0 3px; flex-shrink: 0; }
+.playback-controls button#shuffleBtn.shuffle-active { background-color: #007bff; background-image: linear-gradient(to bottom, #0088ff, #006acc); border-color: #0056b3; color: white; box-shadow: inset 0 1px 1px rgba(255,255,255,0.2), 0 1px 2px rgba(0,0,0,0.3); }
+.file-controls { gap: 10px; }
+.file-controls button { font-size: 0.9em; padding: 8px 15px; border-radius: 20px; white-space: nowrap; }
+.file-controls #playlistToggleBtn { min-width: 140px; }
+.file-controls #addFilesBtn { min-width: 110px; }
+.file-controls button i { margin-right: 6px; font-size: 0.9em; }
+.playlist-header .close-playlist-btn { background: none; background-color: transparent; border: 1px solid transparent; box-shadow: none; color: #aaa; font-size: 1.2em; padding: 2px 5px; width: auto; height: auto; border-radius: 4px; }
 #volumeIcon { cursor: pointer; transition: color 0.2s ease-in-out; margin-right: 8px; color: #aaa; font-size: 1.1em; width: 1.3em; text-align: center; display: inline-block; }
 #volumeIcon:hover { color: #00aeff; }
 #volumeSlider { flex-grow: 0; max-width: 120px; -webkit-appearance: none; appearance: none; height: 8px; background: #555; outline: none; border-radius: 4px; cursor: pointer; --volume-percent: 100%; }
-    #volumeSlider::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: linear-gradient(to right, #00aeff 0%, #00aeff var(--volume-percent), #555 var(--volume-percent), #555 100%); }
-    #volumeSlider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; background: #eee; cursor: pointer; border-radius: 50%; border: 1px solid #888; margin-top: -4px; }
-    #volumeSlider::-moz-range-track { height: 8px; border-radius: 4px; background: #555; }
-    #volumeSlider::-moz-range-progress { background-color: #00aeff; height: 8px; border-radius: 4px; }
-    #volumeSlider::-moz-range-thumb { width: 16px; height: 16px; background: #eee; cursor: pointer; border-radius: 50%; border: 1px solid #888; }
-
-/* File Controls Buttons Styling */
-.file-controls { gap: 10px; }
-.file-controls button { background: #444; border: 1px solid #555; color: #ddd; font-size: 0.9em; padding: 8px 15px; border-radius: 20px; cursor: pointer; transition: background-color 0.2s, transform 0.1s; display: flex; justify-content: center; align-items: center; font-weight: 500; white-space: nowrap; }
-    .file-controls button:hover { background-color: #555; }
-    .file-controls button:active { background-color: #666; transform: scale(0.95); }
-    .file-controls #playlistToggleBtn { min-width: 140px; }
-    .file-controls #addFilesBtn { min-width: 110px; }
-    .file-controls button i { margin-right: 6px; font-size: 0.9em; }
+#volumeSlider::-webkit-slider-runnable-track { height: 8px; border-radius: 4px; background: linear-gradient(to right, #00aeff 0%, #00aeff var(--volume-percent), #555 var(--volume-percent), #555 100%); }
+#volumeSlider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; background: #eee; cursor: pointer; border-radius: 50%; border: 1px solid #888; margin-top: -4px; }
+#volumeSlider::-moz-range-track { height: 8px; border-radius: 4px; background: #555; }
+#volumeSlider::-moz-range-progress { background-color: #00aeff; height: 8px; border-radius: 4px; }
+#volumeSlider::-moz-range-thumb { width: 16px; height: 16px; background: #eee; cursor: pointer; border-radius: 50%; border: 1px solid #888; }
 
 /* Playlist Styles */
-.playlist-container {
-    background-color: #2a2a2a;
-    max-height: 250px;
-    display: flex;
-    flex-direction: column;
-    border-top: 1px solid #444;
-    /* padding: 5px; /* Removed: Apply padding to children if needed for shadow effects */
-}
+.playlist-container { background-color: #2a2a2a; max-height: 250px; display: flex; flex-direction: column; border-top: 1px solid #444; }
     .playlist-container.hidden { display: none; }
-
-.playlist-header {
-    display: flex; justify-content: space-between; align-items: center;
-    padding: 8px 10px; /* Padding for header content */
-    background-color: #303030;
-    border-bottom: 1px solid #3f3f3f;
-    flex-shrink: 0;
-}
-    .playlist-header h3 { margin: 0; font-size: 1em; color: #ccc; font-weight: 500; flex-grow: 1; text-align: center; }
-    .playlist-header .close-playlist-btn { background: none; border: none; color: #aaa; font-size: 1.2em; cursor: pointer; padding: 0 5px; font-weight: 500; }
-        .playlist-header .close-playlist-btn:hover { color: #fff; }
-
-.playlist-area { /* The UL */
-    list-style: none; padding: 0; margin: 0;
-    flex-grow: 1; /* Takes remaining vertical space */
-    overflow-y: auto; /* Makes this part scrollable */
-    min-height: 0; /* Flexbox fix for scrollable children in fixed height parent */
-    background-color: #262626;
-    border-radius: 0 0 4px 4px; /* If overall player is rounded */
-    padding: 3px; /* Small padding to allow inset shadow to appear */
-    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2); /* Simple inset shadow */
-}
-    .playlist-area li {
-        padding: 6px 10px; border-bottom: 1px solid #303030; cursor: pointer;
-        font-size: 0.9em; display: flex; justify-content: space-between;
-        align-items: center; color: #ccc;
-        transition: background-color 0.15s ease-in-out;
+.playlist-header { display: flex; justify-content: space-between; align-items: center; padding: 6px 10px; flex-shrink: 0; color: #e0e0e0; text-shadow: 0 1px 1px rgba(0,0,0,0.5); background-color: #3d3d3d; background-image: linear-gradient(to bottom, #4f4f4f 0%, #333333 100%); border-bottom: 1px solid #1a1a1a; border-top: 1px solid #5a5a5a; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 3px rgba(0,0,0,0.3); position: relative; }
+    .playlist-header h3 { margin: 0; font-size: 1em; font-weight: 500; flex-grow: 1; text-align: center; }
+.playlist-area { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; min-height: 0; background-color: #262626; border-radius: 0 0 4px 4px; padding: 3px; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2); }
+    .playlist-area:empty { background-color: #2a2a2a; box-shadow: none; padding: 0; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+    .playlist-area:empty::before { content: "Playlist is empty"; color: #555; font-style: italic; font-size: 0.9em; }
+    
+    .playlist-area li { 
+        padding: 5px 10px; /* Adjusted padding */
+        border-bottom: 1px solid #303030; 
+        cursor: pointer; 
+        font-size: 0.8em; /* << REDUCED FONT SIZE FOR PLAYLIST ITEMS */
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        color: #ccc; 
+        transition: background-color 0.15s ease-in-out; 
     }
         .playlist-area li:last-child { border-bottom: none; }
         .playlist-area li:hover { background-color: #3a3a3a; }
         .playlist-area li.playing-actual { background-color: #007bff; color: white; font-weight: 500; }
         .playlist-area li.playing-actual .track-name-span, .playlist-area li.playing-actual .track-duration-span { color: white; }
-        .playlist-area li.selected-ui { font-weight: bold; /* Or a different background */ }
+        .playlist-area li.selected-ui { font-weight: bold; }
         .playlist-area li.selected { background-color: #4a5568 !important; color: #e2e8f0 !important; }
          .playlist-area li.selected .track-name-span, .playlist-area li.selected .track-duration-span { color: #e2e8f0 !important; }
         .playlist-area li.playing-actual.selected, .playlist-area li.playing-actual.selected-ui { background-color: #007bff !important; color: white !important; }
         .playlist-area li.playing-actual.selected .track-name-span, .playlist-area li.playing-actual.selected .track-duration-span, .playlist-area li.playing-actual.selected-ui .track-name-span, .playlist-area li.playing-actual.selected-ui .track-duration-span { color: white !important; }
-        .playlist-area li .track-name-span { flex-grow: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 8px; }
-        .playlist-area li .track-duration-span { flex-shrink: 0; font-size: 0.9em; color: #888; min-width: 40px; text-align: right; }
+        
+        .playlist-area li .track-name-span { 
+            flex-grow: 1; white-space: nowrap; overflow: hidden; 
+            text-overflow: ellipsis; padding-right: 8px; 
+        }
+        .playlist-area li .track-duration-span { 
+            flex-shrink: 0; 
+            font-size: 0.9em; /* Relative to the li's new font-size (0.8em * 0.9) */
+            /* Or set a fixed smaller size e.g., font-size: 0.75em; */
+            color: #888; 
+            min-width: 40px; 
+            text-align: right; 
+        }
 
-.playlist-drop-target {
-    text-align: center; color: #777; padding: 20px 10px !important;
-    border: none !important;
-    border-radius: 0; margin: 5px;
-    cursor: default !important; background-color: transparent !important;
-}
-    .playlist-drop-target.dragover { background-color: #404040 !important; }
+/* Playlist Drop Target (visual cue for empty, draggable area) */
+.playlist-drop-target { display: none; /* Not used if :empty pseudo class is used */ }
+.playlist-container.dragover-active .playlist-area:empty { box-shadow: inset 0 0 0 2px #00aeff; background-color: #404040; }
+.playlist-container.dragover-active .playlist-area:empty::before { content: "Drop files to add"; color: #00aeff; }
 
 .main-player.dragover-body { outline: 2px dashed #00aeff; outline-offset: -2px; background-color: rgba(0, 123, 255, 0.1); }
-.playlist-container.dragover-active .playlist-area { box-shadow: inset 0 0 0 2px #00aeff; }
-
-
-/* Scrollbar Styling for .playlist-area */
 .playlist-area::-webkit-scrollbar { width: 8px; }
-.playlist-area::-webkit-scrollbar-track { background: #262626; /* Match playlist-area background */ border-radius: 0 4px 4px 0; /* Round right side of track if list is rounded */ }
+.playlist-area::-webkit-scrollbar-track { background: #262626; border-radius: 0 4px 4px 0; }
 .playlist-area::-webkit-scrollbar-thumb { background-color: #555; border-radius: 4px; border: 1px solid #262626; }
 .playlist-area::-webkit-scrollbar-thumb:hover { background-color: #777; }
 .playlist-area::-webkit-scrollbar-corner { background: #262626; }
