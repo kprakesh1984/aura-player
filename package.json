@@ -1,0 +1,143 @@
+{
+  "name": "aura-player",
+  "version": "1.0.0",
+  "description": "A simple MP3 player built with Electron.",
+  "main": "main.js",
+  "author": "Rakesh KP",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "electron-store": "^7.0.3"
+  },
+  "devDependencies": {
+    "electron": "^28.1.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.rakeshkp.auraplayer",
+    "productName": "Aura Player",
+    "executableName": "AuraPlayer", 
+    "copyright": "Copyright © ${new Date().getFullYear()} Rakesh KP",
+    "asar": true,
+    "directories": {
+      "output": "dist_electron",
+      "buildResources": "assets/icons" 
+    },
+    "files": [
+      "**/*",
+      "!node_modules/.bin",
+      "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme,license,LICENSE,example,examples,test,tests,doc,docs,.*}",
+      "!node_modules/**/*.{d.ts,map,md,txt,html,htm,c,h,cc,cpp,java,gyp,sh,bat,cmd,jst,Makefile, யூனிகோଁଡ}",
+      "!**/*.{map,ts,md,log,h,c,cpp}",
+      "!.git*",
+      "!CONTRIBUTING.md",
+      "!README.md",
+      "!TODO.md",
+      "!yarn.lock",
+      "!package-lock.json",
+      "!dist_electron${/*}",
+      "!assets/build_extras${/*}"
+    ],
+    "extraResources": [],
+    "fileAssociations": [
+      {
+        "ext": "mp3",
+        "name": "MP3 Audio File",
+        "description": "MP3 Audio File played by Aura Player",
+        "role": "Viewer",
+        "icon": "mp3_icon.ico", 
+        "mimeType": "audio/mpeg"
+      },
+      {
+        "ext": "m4a",
+        "name": "M4A Audio File",
+        "description": "M4A Audio File played by Aura Player",
+        "role": "Viewer",
+        "icon": "audio_icon.ico", 
+        "mimeType": "audio/mp4"
+      },
+      {
+        "ext": "aac",
+        "name": "AAC Audio File",
+        "description": "AAC Audio File played by Aura Player",
+        "role": "Viewer",
+        "icon": "audio_icon.ico",
+        "mimeType": "audio/aac"
+      },
+      {
+        "ext": "wav",
+        "name": "WAV Audio File",
+        "role": "Viewer",
+        "icon": "audio_icon.ico",
+        "mimeType": "audio/wav"
+      },
+      {
+        "ext": "ogg",
+        "name": "OGG Vorbis Audio File",
+        "role": "Viewer",
+        "icon": "audio_icon.ico",
+        "mimeType": "audio/ogg"
+      },
+      {
+        "ext": "flac",
+        "name": "FLAC Audio File",
+        "role": "Viewer",
+        "icon": "audio_icon.ico",
+        "mimeType": "audio/flac"
+      }
+    ],
+    "win": {
+      "icon": "icon.ico", 
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "msi",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Aura Player", 
+      "menuCategory": "AudioVideo",
+      "installerIcon": "icon.ico", 
+      "uninstallerIcon": "icon.ico", 
+      "uninstallDisplayName": "${productName} Uninstaller"
+    },
+    "msi": { 
+      "oneClick": false, 
+      "perMachine": true,                           
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Aura Player", 
+      "upgradeCode": "{10b1cbe9-7301-4cd8-8810-aa5d12db39ca}" 
+    },
+    "mac": {
+      "icon": "icon.icns", 
+      "category": "public.app-category.music",
+      "target": ["dmg", "zip"]
+    },
+    "linux": {
+      "icon": ".",                   
+      "category": "AudioVideo;Audio;",
+      "target": ["AppImage", "deb", "rpm"]
+    }
+  }
+}

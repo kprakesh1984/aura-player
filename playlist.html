@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Adjust CSP if this window needs different permissions -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com;">
+    <title>Playlist</title>
+    <link rel="stylesheet" href="style.css"> <!-- Can share or have its own style -->
+    <style>
+        /* Specific styles for playlist window if needed */
+        body {
+            background-color: #2a2a2a; /* Match docked playlist bg */
+            min-height: 0; /* Override player's min-height */
+            padding: 0;
+            display: block; /* Override player's flex */
+        }
+        .playlist-container-detached { /* A wrapper for the list */
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .playlist-header { /* Re-use if applicable */
+            padding: 8px 10px;
+            background-color: #303030;
+            border-bottom: 1px solid #3f3f3f;
+            /* No close button here, window has its own */
+        }
+        .playlist-header h3 { margin: 0; font-size: 1em; color: #ccc; }
+
+        .playlist-area {
+            flex-grow: 1;
+            overflow-y: auto;
+            /* styles from main style.css for .playlist-area li will apply */
+        }
+        /* Ensure body doesn't get player-container styles if style.css is shared fully */
+        .player-container { display: none; }
+    </style>
+</head>
+<body>
+    <div class="playlist-container-detached">
+        <div class="playlist-header">
+            <h3>Playlist</h3>
+            <!-- Maybe an "Add Files" button here too? -->
+            <!-- <button id="addFilesBtnDetached"><i class="fas fa-plus"></i> Add</button> -->
+        </div>
+        <ul id="playlist" class="playlist-area">
+            <!-- Playlist items will be rendered here by renderer-playlist.js -->
+            <li class="playlist-drop-target">Drag & drop audio files here</li>
+        </ul>
+    </div>
+    <script src="./renderer-playlist.js"></script>
+</body>
+</html>
