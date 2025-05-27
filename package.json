@@ -1,7 +1,7 @@
 {
   "name": "aura-player",
   "version": "1.0.0",
-  "description": "A simple MP3 player built with Electron.",
+  "description": "A simple music player built with Electron.",
   "main": "main.js",
   "author": "Rakesh KP",
   "license": "MIT",
