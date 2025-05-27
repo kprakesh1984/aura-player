@@ -15,7 +15,7 @@ let mainWindow;
 let filesToOpenOnReady = []; // Queue for files if app isn't ready yet
 
 // Define constants for window dimensions and content heights
-const MAIN_PLAYER_CONTENT_HEIGHT = 270;
+const MAIN_PLAYER_CONTENT_HEIGHT =  288;
 const DOCKED_PLAYLIST_AREA_HEIGHT = 250;
 const PLAYER_FIXED_WIDTH = 380;
 
