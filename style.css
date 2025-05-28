@@ -8,7 +8,8 @@ body {
 }
 
 body {
-  font-family: "Roboto", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Rosemary", "Roboto", "Segoe UI", Tahoma, Geneva, Verdana,
+    sans-serif;
   background-color: #222;
   color: #ddd;
   display: flex;
@@ -161,7 +162,7 @@ body {
 .playback-controls button,
 .file-controls button,
 .playlist-header .close-playlist-btn {
-  font-family: "Roboto", "Segoe UI", sans-serif;
+  font-family: "Rosemary", "Roboto", "Segoe UI", sans-serif;
   display: flex;
   justify-content: center;
   align-items: center;

@@ -1,5 +1,5 @@
 {
-  "name": "aura-player",
+  "name": "Symphonie",
   "version": "1.0.0",
   "description": "A simple music player built with Electron.",
   "main": "main.js",
@@ -15,13 +15,13 @@
     "electron-store": "^7.0.3"
   },
   "devDependencies": {
-    "electron": "^28.1.0",
+    "electron": "^28.3.3",
     "electron-builder": "^24.9.1"
   },
   "build": {
-    "appId": "com.rakeshkp.auraplayer",
-    "productName": "Aura Player",
-    "executableName": "AuraPlayer",
+    "appId": "com.rakeshkp.symphonie",
+    "productName": "Symphonie",
+    "executableName": "Symphonie",
     "copyright": "Copyright © ${new Date().getFullYear()} Rakesh KP",
     "asar": true,
     "directories": {
@@ -48,7 +48,7 @@
       {
         "ext": "mp3",
         "name": "MP3 Audio File",
-        "description": "MP3 Audio File played by Aura Player",
+        "description": "MP3 Audio File played by Symphonie",
         "role": "Viewer",
         "icon": "mp3_icon.ico",
         "mimeType": "audio/mpeg"
@@ -56,7 +56,7 @@
       {
         "ext": "m4a",
         "name": "M4A Audio File",
-        "description": "M4A Audio File played by Aura Player",
+        "description": "M4A Audio File played by Symphonie",
         "role": "Viewer",
         "icon": "audio_icon.ico",
         "mimeType": "audio/mp4"
@@ -64,7 +64,7 @@
       {
         "ext": "aac",
         "name": "AAC Audio File",
-        "description": "AAC Audio File played by Aura Player",
+        "description": "AAC Audio File played by Symphonie",
         "role": "Viewer",
         "icon": "audio_icon.ico",
         "mimeType": "audio/aac"
@@ -121,8 +121,8 @@
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Aura Player",
-      "menuCategory": "AudioVideo",
+      "shortcutName": "Symphonie",
+      "menuCategory": "Audio",
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico",
       "uninstallDisplayName": "${productName} Uninstaller"
@@ -132,7 +132,7 @@
       "perMachine": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Aura Player",
+      "shortcutName": "Symphonie",
       "upgradeCode": "{10b1cbe9-7301-4cd8-8810-aa5d12db39ca}"
     },
     "mac": {
@@ -145,7 +145,7 @@
     },
     "linux": {
       "icon": ".",
-      "category": "AudioVideo;Audio;",
+      "category": "Audio;Audio;",
       "target": [
         "AppImage",
         "deb",
