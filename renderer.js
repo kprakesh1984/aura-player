@@ -1,5 +1,3 @@
-/* renderer.js */
-
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Renderer DOMContentLoaded: Script starting.");
 
@@ -67,6 +65,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let songScrollTimeout = null;
   let isPlayerExplicitlyStopped = true;
   const PLACEHOLDER_SONG_NAME = "---";
+  let draggedItemIndex = null;
+  let dropTargetIndex = null;
 
   // --- Helper Functions ---
   function formatTime(seconds) {
@@ -108,8 +108,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
   async function getAudioDuration(filePath) {
-    console.log(`DEBUG: getAudioDuration - START for ${filePath}`);
-    return new Promise((resolve) => {
+    /* ... same stable version ... */ return new Promise((resolve) => {
       const tA = new Audio();
       tA.preload = "metadata";
       tA.src = filePath;
@@ -121,9 +120,6 @@ document.addEventListener("DOMContentLoaded", () => {
           tA.onloadedmetadata = null;
           tA.oncanplaythrough = null;
           tA.src = "";
-          console.log(
-            `DEBUG: getAudioDuration - Resolving NULL for ${filePath} (Reason: ${reason})`
-          );
           resolve(null);
         }
       };
@@ -134,31 +130,24 @@ document.addEventListener("DOMContentLoaded", () => {
           tA.oncanplaythrough = null;
           const d = tA.duration;
           tA.src = "";
-          console.log(
-            `DEBUG: getAudioDuration - SUCCESS for ${filePath}, duration: ${d}`
-          );
           resolve(isNaN(d) ? null : d);
         }
       };
       tA.onerror = (e) => {
         console.error(
-          `DEBUG: getAudioDuration - ONAUDIOERROR for ${getFileName(
-            filePath
-          )}: Code=${e.target.error?.code}, Msg=${e.target.error?.message}`
+          `Meta err ${getFileName(filePath)}:`,
+          e.target.error?.code,
+          e.target.error?.message
         );
         rWN("audio_element_error");
       };
       setTimeout(() => {
         if (!r) {
-          console.warn(
-            `DEBUG: getAudioDuration - TIMEOUT for ${getFileName(filePath)}`
-          );
           rWN("timeout");
         }
       }, 7000);
     });
   }
-
   function checkAndApplySongNameScrolling() {
     if (!songNameDisplay || !songNameContainer) return;
     if (songScrollTimeout) {
@@ -167,10 +156,8 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     songNameDisplay.classList.remove("scrolling-active");
     songNameDisplay.style.paddingLeft = "";
-    const isPlaceholderActive =
-      songNameContainer.classList.contains("placeholder-text");
-
-    if (isPlaceholderActive) {
+    const iPA = songNameContainer.classList.contains("placeholder-text");
+    if (iPA) {
       songNameDisplay.style.textOverflow = "clip";
       songNameDisplay.style.overflow = "visible";
       return;
@@ -179,9 +166,8 @@ document.addEventListener("DOMContentLoaded", () => {
       songNameDisplay.style.overflow = "hidden";
     }
     void songNameDisplay.offsetWidth;
-    const isOverflowing =
-      songNameDisplay.scrollWidth > songNameContainer.clientWidth;
-    if (isOverflowing) {
+    const iO = songNameDisplay.scrollWidth > songNameContainer.clientWidth;
+    if (iO) {
       songScrollTimeout = setTimeout(() => {
         if (
           songNameDisplay.scrollWidth > songNameContainer.clientWidth &&
@@ -199,7 +185,6 @@ document.addEventListener("DOMContentLoaded", () => {
       songNameDisplay.style.textOverflow = "ellipsis";
     }
   }
-
   function updateSongDisplay(text) {
     if (songNameDisplay && songNameContainer) {
       const displayText =
@@ -255,9 +240,11 @@ document.addEventListener("DOMContentLoaded", () => {
         isPlayerExplicitlyStopped = false;
       }
       if (playPauseBtn) playPauseBtn.innerHTML = pauseIcon;
+      renderPlaylist();
     });
     audioPlayer.addEventListener("pause", () => {
       if (playPauseBtn) playPauseBtn.innerHTML = playIcon;
+      renderPlaylist();
     });
     audioPlayer.addEventListener("ended", () => {
       currentlyPlayingInfo = null;
@@ -284,6 +271,7 @@ document.addEventListener("DOMContentLoaded", () => {
           (erroredSrc ? getFileName(erroredSrc) : "track");
         updateSongDisplay(`Error: Could not play (${trackName || "Unknown"})`);
       }
+      renderPlaylist();
     });
     audioPlayer.addEventListener("volumechange", () => {
       updateVolumeSliderFill();
@@ -353,25 +341,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       currentlyPlayingInfo = null;
       updateSongDisplay(PLACEHOLDER_SONG_NAME);
-
-      // **** FIX: Explicitly reset seek bar and time displays ****
+      if (durationDisplay && seekBar) {
+        durationDisplay.textContent = formatTime(0);
+        if (seekBar) {
+          seekBar.value = 0;
+          seekBar.max = 0;
+        }
+      }
       if (currentTimeDisplay) {
         currentTimeDisplay.textContent = formatTime(0);
       }
-      if (durationDisplay) {
-        // Also reset duration display as no song is loaded
-        durationDisplay.textContent = formatTime(0);
-      }
-      if (seekBar) {
-        seekBar.value = 0;
-        // If a song was loaded, its duration might still be in seekBar.max.
-        // Resetting max ensures the bar looks empty and prevents issues if
-        // a shorter song is loaded next, or if play is attempted on empty.
-        seekBar.max = 0; // Or a default like 1 or 100 if 0 causes visual glitches
-        // For now, 0 should be fine as value is also 0.
-      }
-      // **** END OF FIX ****
-
       if (playPauseBtn) {
         playPauseBtn.innerHTML = playIcon;
       }
@@ -430,16 +409,28 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- Playlist Logic Functions ---
   function renderPlaylist() {
-    if (!playlistUL) return;
+    if (!playlistUL) {
+      console.error("renderPlaylist: playlistUL is null!");
+      return;
+    }
+    const scrollTop = playlistUL.scrollTop;
     playlistUL.innerHTML = "";
     selectedIndices = selectedIndices.filter((idx) => idx < playlist.length);
 
     if (playlist.length === 0) {
+      /* Below is not required as this will cause design issue */
+      // const li = document.createElement("li");
+      // li.className = "playlist-drop-target";
+      // li.textContent = 'Drag songs here or use "Add Files"'; // RESTORED placeholder text
+      // playlistUL.appendChild(li);
+      // playlistUL.scrollTop = scrollTop;
       return;
     }
 
     playlist.forEach((track, index) => {
       const li = document.createElement("li");
+      li.draggable = true;
+      li.dataset.index = index;
       const tNS = document.createElement("span");
       tNS.className = "track-name-span";
       tNS.textContent = track.name;
@@ -449,8 +440,13 @@ document.addEventListener("DOMContentLoaded", () => {
       dS.className = "track-duration-span";
       dS.textContent = track.durationFormatted || "--:--";
       li.appendChild(dS);
-      li.dataset.index = index;
-      li.classList.remove("playing-actual", "selected-ui", "selected");
+      li.classList.remove(
+        "playing-actual",
+        "selected-ui",
+        "selected",
+        "drop-target-above",
+        "drop-target-below"
+      );
       if (
         currentlyPlayingInfo &&
         currentlyPlayingInfo.path === track.path &&
@@ -510,87 +506,94 @@ document.addEventListener("DOMContentLoaded", () => {
           ]);
         }
       });
+      li.addEventListener("dragstart", (e) => {
+        draggedItemIndex = index;
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", index.toString());
+        if (e.target instanceof HTMLElement) e.target.style.opacity = "0.5";
+      });
+      li.addEventListener("dragend", (e) => {
+        if (e.target instanceof HTMLElement) e.target.style.opacity = "1";
+        playlistUL
+          .querySelectorAll("li.drop-target-above, li.drop-target-below")
+          .forEach((item) => {
+            item.classList.remove("drop-target-above", "drop-target-below");
+          });
+        draggedItemIndex = null;
+        dropTargetIndex = null;
+      });
       playlistUL.appendChild(li);
     });
+    playlistUL.scrollTop = scrollTop;
   }
-
-  // **** MODIFIED addFilesToPlaylist with DUPLICATE CHECK ****
-  async function addFilesToPlaylist(filePaths, playFirstNew = false) {
-    console.log(
-      "DEBUG: addFilesToPlaylist - START. Paths:",
-      filePaths,
-      "PlayFirst:",
-      playFirstNew
-    );
+  async function addFilesToPlaylist(
+    filePaths,
+    playFirstNew = false,
+    insertAtIndex = -1
+  ) {
     const oldPlaylistLength = playlist.length;
     let firstNewTrackActualIndexInPlaylist = -1;
     let newTracksAddedCount = 0;
     const originalSongNameOnDisplay = songNameDisplay
       ? songNameDisplay.textContent
       : PLACEHOLDER_SONG_NAME;
-
-    // Create a Set of existing paths from the CURRENT playlist for efficient duplicate checking
     const existingPathsInPlaylist = new Set(
       playlist.map((track) => track.path)
     );
-
     updateSongDisplay("Loading songs...");
-
+    let tempNewTracks = [];
     for (let i = 0; i < filePaths.length; i++) {
       const path = filePaths[i];
-
-      // --- DUPLICATE CHECK ---
       if (existingPathsInPlaylist.has(path)) {
-        console.log(
-          `DEBUG: addFilesToPlaylist - Skipping duplicate (already in playlist): ${path}`
-        );
-        // Optionally, you could find the existing track and select/highlight it here if desired
-        // For now, we just skip adding it again.
-        continue; // Skip to the next file in the input filePaths
+        console.log(`DEBUG: Skipping duplicate: ${path}`);
+        continue;
       }
-      // --- END DUPLICATE CHECK ---
-
       const name = getFileName(path);
-      console.log(
-        `DEBUG: addFilesToPlaylist - Processing NEW file ${i + 1}/${
-          filePaths.length
-        }: ${name}`
-      );
       if (songNameDisplay && filePaths.length > 1)
         updateSongDisplay(`Loading: ${name} (${i + 1}/${filePaths.length})`);
-
       const durationRaw = await getAudioDuration(path);
       const durationFormatted =
         durationRaw != null && !isNaN(durationRaw)
           ? formatTime(durationRaw)
           : "--:--";
-      console.log(
-        `DEBUG: addFilesToPlaylist - Got duration for ${name}: ${durationFormatted} (raw: ${durationRaw})`
-      );
-
       const newTrack = { path, name, durationRaw, durationFormatted };
-      playlist.push(newTrack);
-      existingPathsInPlaylist.add(path); // Add to set so if it's duplicated IN THE SAME BATCH, it's caught next time
+      tempNewTracks.push(newTrack);
+      existingPathsInPlaylist.add(path);
       newTracksAddedCount++;
-
-      if (isShuffleActive && originalPlaylistOrder) {
-        // Also check duplicates for originalPlaylistOrder if shuffle is on
-        if (!originalPlaylistOrder.some((track) => track.path === path)) {
-          originalPlaylistOrder.push({ ...newTrack });
+    }
+    if (newTracksAddedCount > 0) {
+      let actualInsertionPointForPlayback = -1;
+      if (insertAtIndex !== -1 && insertAtIndex <= playlist.length) {
+        playlist.splice(insertAtIndex, 0, ...tempNewTracks);
+        actualInsertionPointForPlayback = insertAtIndex;
+        if (currentTrackIndex >= insertAtIndex) {
+          currentTrackIndex += newTracksAddedCount;
+        }
+        selectedIndices = selectedIndices
+          .map((idx) =>
+            idx >= insertAtIndex ? idx + newTracksAddedCount : idx
+          )
+          .filter((idx) => idx < playlist.length);
+        if (isShuffleActive && originalPlaylistOrder) {
+          originalPlaylistOrder.splice(
+            insertAtIndex,
+            0,
+            ...tempNewTracks.map((t) => ({ ...t }))
+          );
+        }
+      } else {
+        playlist.push(...tempNewTracks);
+        actualInsertionPointForPlayback = oldPlaylistLength;
+        if (isShuffleActive && originalPlaylistOrder) {
+          tempNewTracks.forEach((nt) => {
+            if (!originalPlaylistOrder.some((ot) => ot.path === nt.path))
+              originalPlaylistOrder.push({ ...nt });
+          });
         }
       }
-      if (firstNewTrackActualIndexInPlaylist === -1) {
-        firstNewTrackActualIndexInPlaylist = playlist.length - 1; // Index of the first genuinely new track added
-      }
-      console.log(
-        `DEBUG: addFilesToPlaylist - Added to playlist array:`,
-        newTrack
-      );
+      if (firstNewTrackActualIndexInPlaylist === -1 && tempNewTracks.length > 0)
+        firstNewTrackActualIndexInPlaylist = actualInsertionPointForPlayback;
     }
-    console.log(
-      `DEBUG: addFilesToPlaylist - Finished processing batch. Added ${newTracksAddedCount} new tracks.`
-    );
-
     if (songNameDisplay) {
       if (currentlyPlayingInfo) {
         updateSongDisplay(currentlyPlayingInfo.name);
@@ -608,30 +611,19 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
     renderPlaylist();
-    console.log("DEBUG: addFilesToPlaylist - Playlist rendered.");
-
     if (
       newTracksAddedCount > 0 &&
       (playFirstNew || oldPlaylistLength === 0) &&
       firstNewTrackActualIndexInPlaylist !== -1
     ) {
-      console.log(
-        "DEBUG: addFilesToPlaylist - Attempting to play first new track at index:",
-        firstNewTrackActualIndexInPlaylist
-      );
       playTrack(
         firstNewTrackActualIndexInPlaylist,
         "addFilesToPlaylist_playFirstNew"
       );
     } else if (newTracksAddedCount === 0 && filePaths.length > 0) {
-      console.log(
-        "DEBUG: addFilesToPlaylist - All files were duplicates or no new files to auto-play."
-      );
+      console.log("DEBUG: addFilesToPlaylist - All files were duplicates.");
     }
-    console.log("DEBUG: addFilesToPlaylist - END");
   }
-  // **** END OF MODIFIED addFilesToPlaylist ****
-
   function playTrack(index, calledFrom = "unknown") {
     console.log(
       `DEBUG: playTrack - CALLED from "${calledFrom}" with index: ${index}`
@@ -723,9 +715,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!indicesToRemove || indicesToRemove.length === 0) return;
     indicesToRemove.sort((a, b) => b - a);
     let newUiCurrentIndex = currentTrackIndex;
+    let actualPlayingTrackWasRemovedFromList = false;
     indicesToRemove.forEach((indexToRemove) => {
       if (indexToRemove < 0 || indexToRemove >= playlist.length) return;
       const removedTrack = playlist.splice(indexToRemove, 1)[0];
+      if (
+        removedTrack &&
+        currentlyPlayingInfo &&
+        removedTrack.path === currentlyPlayingInfo.path
+      )
+        actualPlayingTrackWasRemovedFromList = true;
       if (isShuffleActive && originalPlaylistOrder) {
         const oI = originalPlaylistOrder.findIndex(
           (t) => t.path === removedTrack?.path
@@ -739,33 +738,43 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     if (playlist.length === 0) {
       currentTrackIndex = -1;
-    } else {
-      currentTrackIndex = Math.min(newUiCurrentIndex, playlist.length - 1);
-      if (currentTrackIndex < 0) currentTrackIndex = 0;
-    }
-    selectedIndices = currentTrackIndex !== -1 ? [currentTrackIndex] : [];
-    lastClickedIndex = currentTrackIndex;
-    if (currentlyPlayingInfo && songNameDisplay) {
-      updateSongDisplay(currentlyPlayingInfo.name);
-    } else if (
-      playlist.length > 0 &&
-      currentTrackIndex !== -1 &&
-      songNameDisplay
-    ) {
-      updateSongDisplay(playlist[currentTrackIndex].name);
-    } else if (songNameDisplay) {
-      updateSongDisplay(PLACEHOLDER_SONG_NAME);
-      if (
-        audioPlayer &&
-        (!audioPlayer.src || audioPlayer.src === "") &&
-        !currentlyPlayingInfo
-      ) {
+      if (actualPlayingTrackWasRemovedFromList || !currentlyPlayingInfo) {
+        if (audioPlayer) {
+          audioPlayer.pause();
+          audioPlayer.removeAttribute("src");
+          audioPlayer.load();
+        }
+        currentlyPlayingInfo = null;
+        updateSongDisplay(PLACEHOLDER_SONG_NAME);
         if (durationDisplay && seekBar) {
           durationDisplay.textContent = formatTime(0);
           seekBar.value = 0;
           seekBar.max = 0;
         }
+        isPlayerExplicitlyStopped = true;
       }
+    } else {
+      currentTrackIndex = Math.min(newUiCurrentIndex, playlist.length - 1);
+      if (currentTrackIndex < 0) currentTrackIndex = 0;
+      if (actualPlayingTrackWasRemovedFromList && !currentlyPlayingInfo) {
+        playTrack(currentTrackIndex, "removeTracks_nextAfterRemovedPlaying");
+      }
+    }
+    selectedIndices =
+      currentTrackIndex !== -1 && playlist.length > 0
+        ? [currentTrackIndex]
+        : [];
+    lastClickedIndex = currentTrackIndex;
+    if (
+      !currentlyPlayingInfo &&
+      playlist.length > 0 &&
+      currentTrackIndex !== -1
+    ) {
+      updateSongDisplay(playlist[currentTrackIndex].name);
+    } else if (!currentlyPlayingInfo) {
+      updateSongDisplay(PLACEHOLDER_SONG_NAME);
+    } else if (currentlyPlayingInfo && songNameDisplay) {
+      updateSongDisplay(currentlyPlayingInfo.name);
     }
     renderPlaylist();
   }
@@ -890,46 +899,23 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   if (addFilesBtn) {
-    console.log("Renderer DEBUG: Attaching 'click' listener to addFilesBtn.");
     addFilesBtn.addEventListener("click", async () => {
-      console.log("Renderer DEBUG: Add Files button CLICKED.");
       try {
         if (
           window.electronAPI &&
           typeof window.electronAPI.openFiles === "function"
         ) {
-          console.log("Renderer DEBUG: Calling window.electronAPI.openFiles()");
           const filePaths = await window.electronAPI.openFiles();
-          console.log("Renderer DEBUG: Files selected via dialog:", filePaths);
           if (filePaths && filePaths.length > 0) {
-            console.log(
-              "Renderer DEBUG: Calling addFilesToPlaylist with selected files."
-            );
-            await addFilesToPlaylist(filePaths, playlist.length === 0);
-            console.log(
-              "Renderer DEBUG: addFilesToPlaylist completed after Add Files button click."
-            );
-          } else {
-            console.log(
-              "Renderer DEBUG: No files selected or dialog cancelled."
-            );
+            await addFilesToPlaylist(filePaths, playlist.length === 0, -1);
           }
         } else {
-          console.error(
-            "Renderer DEBUG Error: window.electronAPI.openFiles is not available."
-          );
+          console.error("window.electronAPI.openFiles is not available.");
         }
       } catch (error) {
-        console.error(
-          "Renderer DEBUG Error in addFilesBtn click handler:",
-          error
-        );
+        console.error("Error in addFilesBtn click handler:", error);
       }
     });
-  } else {
-    console.error(
-      "Renderer DEBUG ERROR: addFilesBtn element NOT FOUND! Check ID in HTML."
-    );
   }
   function updatePlaylistToggleBtnTextDOM() {
     if (!playlistToggleBtn || !playlistContainer) {
@@ -955,11 +941,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updatePlaylistToggleBtnTextDOM();
   }
   function toggleDockedPlaylistDOM() {
-    console.log("Renderer DEBUG: toggleDockedPlaylistDOM CALLED.");
     if (!playlistContainer) {
-      console.error(
-        "Renderer DEBUG Error: playlistContainer is null in toggleDockedPlaylistDOM."
-      );
       return;
     }
     const isCurrentlyHidden = playlistContainer.classList.contains("hidden");
@@ -973,14 +955,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const heightOption = showPlaylist
         ? "player_with_playlist"
         : "player_only";
-      console.log(
-        "Renderer DEBUG: toggleDockedPlaylistDOM: Sending IPC. Width:",
-        currentBodyWidth,
-        "HeightOpt:",
-        heightOption,
-        "Visible:",
-        showPlaylist
-      );
       window.electronAPI.resizeMainWindowAndSaveVisibility(
         currentBodyWidth,
         heightOption,
@@ -988,21 +962,14 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     } else {
       console.error(
-        "Renderer DEBUG Error: window.electronAPI.resizeMainWindowAndSaveVisibility is not available."
+        "window.electronAPI.resizeMainWindowAndSaveVisibility is not available."
       );
     }
   }
-  if (playlistToggleBtn) {
-    console.log(
-      "Renderer DEBUG: Attaching 'click' listener to playlistToggleBtn."
-    );
+  if (playlistToggleBtn)
     playlistToggleBtn.addEventListener("click", toggleDockedPlaylistDOM);
-  } else {
-    console.error("Renderer DEBUG ERROR: playlistToggleBtn element NOT FOUND!");
-  }
-  if (closePlaylistPanelBtn) {
+  if (closePlaylistPanelBtn)
     closePlaylistPanelBtn.addEventListener("click", () => {
-      console.log("Renderer DEBUG: closePlaylistPanelBtn CLICKED.");
       if (
         playlistContainer &&
         !playlistContainer.classList.contains("hidden")
@@ -1010,77 +977,248 @@ document.addEventListener("DOMContentLoaded", () => {
         toggleDockedPlaylistDOM();
       }
     });
-  } else {
-    console.error(
-      "Renderer DEBUG ERROR: closePlaylistPanelBtn element NOT FOUND!"
-    );
-  }
-  const dropZoneElement = document.body;
-  if (dropZoneElement) {
-    console.log("Renderer DEBUG: Attaching drag/drop listeners to body.");
-    dropZoneElement.addEventListener("dragover", (e) => {
+
+  // --- DRAG AND DROP ON PLAYLIST AREA (for reordering and external file drop) ---
+  if (playlistUL) {
+    playlistUL.addEventListener("dragenter", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (
-        playlistContainer &&
-        !playlistContainer.classList.contains("hidden")
-      ) {
+      if (e.dataTransfer.types.includes("Files"))
         playlistContainer.classList.add("dragover-active");
-        if (playlistUL && playlistUL.querySelector(".playlist-drop-target")) {
-          playlistUL
-            .querySelector(".playlist-drop-target")
-            .classList.add("dragover");
+    });
+    playlistUL.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.dataTransfer.types.includes("Files")) {
+        e.dataTransfer.dropEffect = "copy";
+        if (playlistContainer)
+          playlistContainer.classList.add("dragover-active");
+      } else {
+        e.dataTransfer.dropEffect = "move";
+      }
+      if (draggedItemIndex !== null) {
+        const targetLi = e.target.closest("li:not(.playlist-drop-target)");
+        playlistUL
+          .querySelectorAll("li.drop-target-above, li.drop-target-below")
+          .forEach((item) =>
+            item.classList.remove("drop-target-above", "drop-target-below")
+          );
+        if (targetLi && targetLi.dataset.index !== undefined) {
+          const targetLiIndex = parseInt(targetLi.dataset.index, 10);
+          if (targetLiIndex !== draggedItemIndex) {
+            const rect = targetLi.getBoundingClientRect();
+            if (e.clientY < rect.top + rect.height / 2) {
+              targetLi.classList.add("drop-target-above");
+              dropTargetIndex = targetLiIndex;
+            } else {
+              targetLi.classList.add("drop-target-below");
+              dropTargetIndex = targetLiIndex + 1;
+            }
+          } else {
+            dropTargetIndex = null;
+          }
+        } else {
+          dropTargetIndex = playlist.length;
+          const emptyPlaceholder = playlistUL.querySelector(
+            ".playlist-drop-target"
+          );
+          if (emptyPlaceholder)
+            emptyPlaceholder.classList.add("dragover-active-direct");
+        }
+      }
+    });
+    playlistUL.addEventListener("dragleave", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (playlistContainer)
+        playlistContainer.classList.remove("dragover-active");
+      const targetLi = e.target.closest("li"); // This might be null if leaving to outside children
+      if (
+        dragOverPlaylistLi &&
+        (!e.relatedTarget || !playlistUL.contains(e.relatedTarget))
+      ) {
+        // Leaving UL
+        dragOverPlaylistLi.classList.remove(
+          "drop-target-above",
+          "drop-target-below",
+          "dragover-active-direct"
+        );
+        dragOverPlaylistLi = null;
+        dropTargetIndex = null;
+      } else if (
+        dragOverPlaylistLi &&
+        e.target === dragOverPlaylistLi &&
+        e.relatedTarget &&
+        !playlistUL.contains(e.relatedTarget)
+      ) {
+        // Leaving the specific LI to outside
+        dragOverPlaylistLi.classList.remove(
+          "drop-target-above",
+          "drop-target-below",
+          "dragover-active-direct"
+        );
+        dragOverPlaylistLi = null;
+        dropTargetIndex = null;
+      } else if (
+        targetLi &&
+        targetLi === dragOverPlaylistLi &&
+        e.relatedTarget &&
+        targetLi.contains(e.relatedTarget)
+      ) {
+        // Moving within the same li (e.g. over text inside it), do nothing yet.
+      } else if (dragOverPlaylistLi && targetLi !== dragOverPlaylistLi) {
+        // Moved from one li to another (or to empty space)
+        dragOverPlaylistLi.classList.remove(
+          "drop-target-above",
+          "drop-target-below",
+          "dragover-active-direct"
+        );
+        // dropTargetIndex would have been updated by new target's dragover
+      }
+    });
+    playlistUL.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (playlistContainer)
+        playlistContainer.classList.remove("dragover-active");
+      playlistUL
+        .querySelectorAll(
+          "li.drop-target-above, li.drop-target-below, .playlist-drop-target.dragover-active-direct"
+        )
+        .forEach((item) =>
+          item.classList.remove(
+            "drop-target-above",
+            "drop-target-below",
+            "dragover-active-direct"
+          )
+        );
+
+      if (draggedItemIndex !== null && dropTargetIndex !== null) {
+        // Internal reorder
+        console.log(
+          "Internal reorder drop. Dragged:",
+          draggedItemIndex,
+          "Target:",
+          dropTargetIndex
+        );
+        if (
+          draggedItemIndex !== dropTargetIndex &&
+          draggedItemIndex !== dropTargetIndex - 1
+        ) {
+          // Ensure not dropping onto itself
+          const itemToMove = playlist.splice(draggedItemIndex, 1)[0];
+          const actualInsertAt =
+            draggedItemIndex < dropTargetIndex
+              ? dropTargetIndex - 1
+              : dropTargetIndex;
+          playlist.splice(actualInsertAt, 0, itemToMove);
+          if (currentlyPlayingInfo) {
+            const newPlayingIdx = playlist.findIndex(
+              (t) => t.path === currentlyPlayingInfo.path
+            );
+            if (newPlayingIdx !== -1) currentTrackIndex = newPlayingIdx;
+            else {
+              currentlyPlayingInfo = null;
+              currentTrackIndex = -1;
+            }
+          } else if (playlist.length > 0) {
+            currentTrackIndex =
+              actualInsertAt < playlist.length ? actualInsertAt : 0;
+          } else {
+            currentTrackIndex = -1;
+          }
+          if (
+            isShuffleActive &&
+            originalPlaylistOrder.length === playlist.length
+          ) {
+            const movedOriginalItem = originalPlaylistOrder.splice(
+              draggedItemIndex,
+              1
+            )[0];
+            originalPlaylistOrder.splice(actualInsertAt, 0, movedOriginalItem);
+          }
+          renderPlaylist();
         }
       } else {
+        // External file drop onto playlistUL
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+          const audioFilePaths = Array.from(files)
+            .filter(
+              (f) =>
+                f.type.startsWith("audio/") ||
+                /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(f.name)
+            )
+            .map((f) => f.path);
+          if (audioFilePaths.length > 0) {
+            let insertAtIndexForExternal = playlist.length; // Default to append for external files
+            const dropOnLi = e.target.closest("li:not(.playlist-drop-target)");
+            if (dropOnLi && dropOnLi.dataset.index !== undefined) {
+              const targetIdx = parseInt(dropOnLi.dataset.index, 10);
+              const rect = dropOnLi.getBoundingClientRect();
+              if (e.clientY < rect.top + rect.height / 2) {
+                insertAtIndexForExternal = targetIdx;
+              } else {
+                insertAtIndexForExternal = targetIdx + 1;
+              }
+            } else if (
+              playlistUL.querySelector(".playlist-drop-target") &&
+              playlist.length === 0
+            ) {
+              insertAtIndexForExternal = 0;
+            }
+            await addFilesToPlaylist(
+              audioFilePaths,
+              playlist.length === 0 && insertAtIndexForExternal <= 0,
+              insertAtIndexForExternal
+            );
+          }
+        }
+      }
+      draggedItemIndex = null;
+      dropTargetIndex = null;
+    });
+  }
+
+  // Fallback body drop (appends to playlist)
+  const bodyDropZone = document.body;
+  if (bodyDropZone && bodyDropZone !== playlistUL) {
+    bodyDropZone.addEventListener("dragover", (e) => {
+      if (!playlistUL.contains(e.target) && !e.target.closest("#playlistUL")) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "copy";
         if (mainPlayerPanel) mainPlayerPanel.classList.add("dragover-body");
       }
     });
-    dropZoneElement.addEventListener("dragleave", (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      if (playlistContainer)
-        playlistContainer.classList.remove("dragover-active");
+    bodyDropZone.addEventListener("dragleave", (e) => {
       if (
-        playlistUL &&
-        playlistUL.querySelector(".playlist-drop-target.dragover")
+        !playlistUL.contains(e.relatedTarget) &&
+        !e.relatedTarget?.closest("#playlistUL")
       ) {
-        playlistUL
-          .querySelector(".playlist-drop-target.dragover")
-          .classList.remove("dragover");
+        e.preventDefault();
+        e.stopPropagation();
+        if (mainPlayerPanel) mainPlayerPanel.classList.remove("dragover-body");
       }
-      if (mainPlayerPanel) mainPlayerPanel.classList.remove("dragover-body");
     });
-    dropZoneElement.addEventListener("drop", async (e) => {
-      console.log("Renderer DEBUG: Files DROPPED.");
-      e.preventDefault();
-      e.stopPropagation();
-      if (playlistContainer)
-        playlistContainer.classList.remove("dragover-active");
-      if (
-        playlistUL &&
-        playlistUL.querySelector(".playlist-drop-target.dragover")
-      ) {
-        playlistUL
-          .querySelector(".playlist-drop-target.dragover")
-          .classList.remove("dragover");
-      }
-      if (mainPlayerPanel) mainPlayerPanel.classList.remove("dragover-body");
-      const files = e.dataTransfer.files;
-      if (files && files.length > 0) {
-        const audioFilePaths = Array.from(files)
-          .filter(
-            (f) =>
-              f.type.startsWith("audio/") ||
-              /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(f.name)
-          )
-          .map((f) => f.path);
-        console.log("Renderer DEBUG: Paths from drop:", audioFilePaths);
-        if (audioFilePaths.length > 0) {
-          await addFilesToPlaylist(audioFilePaths, playlist.length === 0);
-          console.log("Renderer DEBUG: addFilesToPlaylist completed for drop.");
+    bodyDropZone.addEventListener("drop", async (e) => {
+      if (!playlistUL.contains(e.target) && !e.target.closest("#playlistUL")) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (mainPlayerPanel) mainPlayerPanel.classList.remove("dragover-body");
+        const files = e.dataTransfer.files;
+        if (files && files.length > 0) {
+          const audioFilePaths = Array.from(files)
+            .filter(
+              (f) =>
+                f.type.startsWith("audio/") ||
+                /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(f.name)
+            )
+            .map((f) => f.path);
+          if (audioFilePaths.length > 0) {
+            await addFilesToPlaylist(audioFilePaths, playlist.length === 0, -1);
+          }
         }
-      } else {
-        console.log("Renderer DEBUG: No files in drop dataTransfer.");
       }
     });
   }
@@ -1118,32 +1256,17 @@ document.addEventListener("DOMContentLoaded", () => {
     typeof window.electronAPI.onOpenFileInPlayer === "function"
   ) {
     window.electronAPI.onOpenFileInPlayer(async (filePath) => {
-      console.log(
-        "Renderer DEBUG: IPC 'onOpenFileInPlayer' RECEIVED path:",
-        filePath
-      );
       if (filePath && typeof filePath === "string") {
         const trackExistsIndex = playlist.findIndex(
           (track) => track.path === filePath
         );
         if (trackExistsIndex !== -1) {
-          console.log(
-            "Renderer DEBUG: File association - File already in playlist, playing index:",
-            trackExistsIndex
-          );
           isPlayerExplicitlyStopped = false;
           playTrack(trackExistsIndex, "onOpenFileInPlayer_existing");
         } else {
-          console.log(
-            "Renderer DEBUG: File association - File not in playlist, adding..."
-          );
           if (songNameDisplay && playlist.length === 0)
             updateSongDisplay(`Loading: ${getFileName(filePath)}`);
           const name = getFileName(filePath);
-          console.log(
-            "Renderer DEBUG: File association - Getting duration for",
-            name
-          );
           const durationRaw = await getAudioDuration(filePath);
           const durationFormatted =
             durationRaw != null && !isNaN(durationRaw)
@@ -1156,42 +1279,24 @@ document.addEventListener("DOMContentLoaded", () => {
             durationFormatted,
           };
           playlist.push(newTrack);
-          console.log(
-            "Renderer DEBUG: File association - New track pushed to playlist:",
-            newTrack
-          );
           renderPlaylist();
           const newTrackIndex = playlist.length - 1;
-          console.log(
-            "Renderer DEBUG: File association - New track added at index:",
-            newTrackIndex,
-            ". Explicitly calling playTrack."
-          );
           isPlayerExplicitlyStopped = false;
           playTrack(newTrackIndex, "onOpenFileInPlayer_new");
         }
-      } else {
-        console.warn(
-          "Renderer DEBUG: Received invalid filePath for 'onOpenFileInPlayer':",
-          filePath
-        );
       }
     });
   } else {
     console.warn(
-      "Renderer DEBUG: window.electronAPI.onOpenFileInPlayer not available."
+      "Renderer: window.electronAPI.onOpenFileInPlayer not available."
     );
   }
 
   // --- Initial Setup ---
-  console.log("Renderer DEBUG: Initial Setup starting.");
   renderPlaylist();
   updatePlaylistToggleBtnTextDOM();
   updateShuffleButtonUI();
   setTimeout(() => {
-    console.log(
-      "Renderer DEBUG: Initial Setup timeout function running (for volume UI)."
-    );
     if (
       audioPlayer &&
       volumeSlider &&
@@ -1208,7 +1313,5 @@ document.addEventListener("DOMContentLoaded", () => {
     updateVolumeSliderFill();
     updateVolumeIcon();
     updateSongDisplay(songNameDisplay.textContent || PLACEHOLDER_SONG_NAME);
-    console.log("Renderer DEBUG: Initial Setup timeout function completed.");
   }, 100);
-  console.log("Renderer DEBUG: Script fully loaded and initial setup queued.");
 });
