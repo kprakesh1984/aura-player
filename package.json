@@ -1,6 +1,6 @@
 {
-  "name": "Symphonie",
-  "version": "1.0.0",
+  "name": "symphonie",
+  "version": "1.0.2",
   "description": "A simple music player built with Electron.",
   "main": "main.js",
   "author": "Rakesh KP",
@@ -32,7 +32,7 @@
       "**/*",
       "!node_modules/.bin",
       "!node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme,license,LICENSE,example,examples,test,tests,doc,docs,.*}",
-      "!node_modules/**/*.{d.ts,map,md,txt,html,htm,c,h,cc,cpp,java,gyp,sh,bat,cmd,jst,Makefile, யூனிகோଁଡ}",
+      "!node_modules/**/*.{d.ts,map,md,txt,html,htm,c,h,cc,cpp,java,gyp,sh,bat,cmd,jst,Makefile}",
       "!**/*.{map,ts,md,log,h,c,cpp}",
       "!.git*",
       "!CONTRIBUTING.md",
@@ -125,13 +125,16 @@
       "menuCategory": "Audio",
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico",
-      "uninstallDisplayName": "${productName} Uninstaller"
+      "uninstallDisplayName": "${productName} Uninstaller",
+      "compression": "maximum",
+      "differentialPackage": true
     },
     "msi": {
       "oneClick": false,
       "perMachine": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "compression": "maximum",
       "shortcutName": "Symphonie",
       "upgradeCode": "{10b1cbe9-7301-4cd8-8810-aa5d12db39ca}"
     },
