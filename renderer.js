@@ -1,10 +1,14 @@
+// renderer.js
 document.addEventListener("DOMContentLoaded", () => {
   console.log("Renderer DOMContentLoaded: Script starting.");
 
   // DOM Element References
   const audioPlayer = document.getElementById("audioPlayer");
-  const songNameDisplay = document.getElementById("songName");
-  const songNameContainer = document.querySelector(".song-name-container");
+  const songTitleDisplay = document.getElementById("songTitle");
+  const songArtistDisplay = document.getElementById("songArtist");
+  const nowPlayingDetailsContainer = document.querySelector(
+    ".now-playing-details"
+  );
   const mainPlayerPanel = document.getElementById("mainPlayerPanel");
   const playPauseBtn = document.getElementById("playPauseBtn");
   const playIcon = '<i class="fas fa-play"></i>';
@@ -29,8 +33,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (
     !audioPlayer ||
-    !songNameDisplay ||
-    !songNameContainer ||
+    !songTitleDisplay ||
+    !songArtistDisplay ||
+    !nowPlayingDetailsContainer ||
     !mainPlayerPanel ||
     !playPauseBtn ||
     !prevBtn ||
@@ -62,11 +67,12 @@ document.addEventListener("DOMContentLoaded", () => {
   let selectedIndices = [];
   let lastClickedIndex = -1;
   let currentlyPlayingInfo = null;
-  let songScrollTimeout = null;
   let isPlayerExplicitlyStopped = true;
-  const PLACEHOLDER_SONG_NAME = "---";
+  const PLACEHOLDER_TITLE = "--- Symphonie ---";
+  const PLACEHOLDER_ARTIST = "";
   let draggedItemIndex = null;
   let dropTargetIndex = null;
+  const PLAYER_FIXED_WIDTH = 380;
 
   // --- Helper Functions ---
   function formatTime(seconds) {
@@ -75,16 +81,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const s = Math.floor(seconds % 60);
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   }
+
   function getFileName(filePath) {
     if (!filePath) return "Unknown Song";
     return filePath.split(/[\\/]/).pop() || "Unknown Song";
   }
+
   function updateVolumeSliderFill() {
     if (volumeSlider && audioPlayer) {
       const p = audioPlayer.muted ? 0 : audioPlayer.volume * 100;
       volumeSlider.style.setProperty("--volume-percent", `${p}%`);
     }
   }
+
   function updateVolumeIcon() {
     if (!volumeIcon || !audioPlayer) return;
     volumeIcon.classList.remove(
@@ -107,113 +116,145 @@ document.addEventListener("DOMContentLoaded", () => {
       volumeIcon.title = "Mute";
     }
   }
+
   async function getAudioDuration(filePath) {
-    /* ... same stable version ... */ return new Promise((resolve) => {
-      const tA = new Audio();
-      tA.preload = "metadata";
-      tA.src = filePath;
-      let r = false;
-      const rWN = (reason = "unknown") => {
-        if (!r) {
-          r = true;
-          tA.onerror = null;
-          tA.onloadedmetadata = null;
-          tA.oncanplaythrough = null;
-          tA.src = "";
+    return new Promise((resolve) => {
+      const tempAudio = new Audio();
+      tempAudio.preload = "metadata";
+      tempAudio.src = filePath;
+      let resolved = false;
+      const resolveWithNull = () => {
+        if (!resolved) {
+          resolved = true;
+          tempAudio.onerror = null;
+          tempAudio.onloadedmetadata = null;
+          tempAudio.src = "";
           resolve(null);
         }
       };
-      tA.onloadedmetadata = () => {
-        if (!r) {
-          r = true;
-          tA.onerror = null;
-          tA.oncanplaythrough = null;
-          const d = tA.duration;
-          tA.src = "";
+      tempAudio.onloadedmetadata = () => {
+        if (!resolved) {
+          resolved = true;
+          tempAudio.onerror = null;
+          const d = tempAudio.duration;
+          tempAudio.src = "";
           resolve(isNaN(d) ? null : d);
         }
       };
-      tA.onerror = (e) => {
-        console.error(
-          `Meta err ${getFileName(filePath)}:`,
-          e.target.error?.code,
-          e.target.error?.message
-        );
-        rWN("audio_element_error");
-      };
+      tempAudio.onerror = () => resolveWithNull();
       setTimeout(() => {
-        if (!r) {
-          rWN("timeout");
-        }
+        if (!resolved) resolveWithNull();
       }, 7000);
     });
   }
-  function checkAndApplySongNameScrolling() {
-    if (!songNameDisplay || !songNameContainer) return;
-    if (songScrollTimeout) {
-      clearTimeout(songScrollTimeout);
-      songScrollTimeout = null;
+
+  async function fetchTrackMetadata(filePath) {
+    if (
+      window.electronAPI &&
+      typeof window.electronAPI.getMetadata === "function"
+    ) {
+      try {
+        const metadata = await window.electronAPI.getMetadata(filePath);
+        if (metadata)
+          return {
+            title: metadata.title || getFileName(filePath),
+            artist: metadata.artist || "",
+            album: metadata.album || "",
+          };
+      } catch (error) {
+        console.error(
+          `Renderer: Error fetching metadata for ${filePath} via electronAPI:`,
+          error
+        );
+      }
     }
-    songNameDisplay.classList.remove("scrolling-active");
-    songNameDisplay.style.paddingLeft = "";
-    const iPA = songNameContainer.classList.contains("placeholder-text");
-    if (iPA) {
-      songNameDisplay.style.textOverflow = "clip";
-      songNameDisplay.style.overflow = "visible";
+    return { title: getFileName(filePath), artist: "", album: "" };
+  }
+
+  function checkAndApplyScrolling(textElement, containerElement) {
+    if (!textElement || !containerElement) return;
+    let timeoutId = parseInt(textElement.dataset.scrollTimeoutId, 10);
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+      textElement.dataset.scrollTimeoutId = "";
+    }
+    textElement.classList.remove("scrolling-active");
+    const isPlaceholderParent =
+      nowPlayingDetailsContainer.classList.contains("placeholder-text");
+    if (
+      (isPlaceholderParent && textElement.textContent === PLACEHOLDER_TITLE) ||
+      (isPlaceholderParent &&
+        textElement.id === "songArtist" &&
+        textElement.textContent === PLACEHOLDER_ARTIST)
+    ) {
+      textElement.style.textOverflow = "clip";
+      textElement.style.overflow = "visible";
       return;
     } else {
-      songNameDisplay.style.textOverflow = "ellipsis";
-      songNameDisplay.style.overflow = "hidden";
+      textElement.style.textOverflow = "ellipsis";
+      textElement.style.overflow = "hidden";
     }
-    void songNameDisplay.offsetWidth;
-    const iO = songNameDisplay.scrollWidth > songNameContainer.clientWidth;
-    if (iO) {
-      songScrollTimeout = setTimeout(() => {
+    void textElement.offsetWidth;
+    const isOverflowing =
+      textElement.scrollWidth > containerElement.clientWidth;
+    if (isOverflowing) {
+      textElement.dataset.scrollTimeoutId = setTimeout(() => {
         if (
-          songNameDisplay.scrollWidth > songNameContainer.clientWidth &&
-          !songNameContainer.classList.contains("placeholder-text")
+          textElement.scrollWidth > containerElement.clientWidth &&
+          !nowPlayingDetailsContainer.classList.contains("placeholder-text")
         ) {
-          songNameDisplay.style.textOverflow = "clip";
-          songNameDisplay.classList.add("scrolling-active");
+          textElement.style.textOverflow = "clip";
+          textElement.classList.add("scrolling-active");
         } else {
-          songNameDisplay.classList.remove("scrolling-active");
-          songNameDisplay.style.textOverflow = "ellipsis";
+          textElement.classList.remove("scrolling-active");
+          textElement.style.textOverflow = "ellipsis";
         }
-      }, 2000);
+      }, 2000).toString();
     } else {
-      songNameDisplay.classList.remove("scrolling-active");
-      songNameDisplay.style.textOverflow = "ellipsis";
+      textElement.classList.remove("scrolling-active");
+      textElement.style.textOverflow = "ellipsis";
     }
   }
-  function updateSongDisplay(text) {
-    if (songNameDisplay && songNameContainer) {
-      const displayText =
-        text === "None" ||
-        text === null ||
-        text === undefined ||
-        text.trim() === "" ||
-        text.trim() === PLACEHOLDER_SONG_NAME
-          ? PLACEHOLDER_SONG_NAME
-          : text;
-      songNameDisplay.textContent = displayText;
-      songNameDisplay.title =
-        displayText === PLACEHOLDER_SONG_NAME ? "No song playing" : text;
-      if (displayText === PLACEHOLDER_SONG_NAME || text.startsWith("Error:")) {
-        songNameContainer.classList.add("placeholder-text");
-      } else {
-        songNameContainer.classList.remove("placeholder-text");
-      }
-      checkAndApplySongNameScrolling();
+
+  function updateTrackInfoDisplay(title, artist) {
+    if (songTitleDisplay && songArtistDisplay && nowPlayingDetailsContainer) {
+      const displayTitle = title || PLACEHOLDER_TITLE;
+      const displayArtist = artist || PLACEHOLDER_ARTIST;
+      songTitleDisplay.textContent = displayTitle;
+      songTitleDisplay.title =
+        displayTitle === PLACEHOLDER_TITLE ? "No track loaded" : displayTitle;
+      songArtistDisplay.textContent = displayArtist;
+      songArtistDisplay.title = displayArtist;
+      nowPlayingDetailsContainer.classList.toggle(
+        "placeholder-text",
+        displayTitle === PLACEHOLDER_TITLE
+      );
+      if (songTitleDisplay.parentElement)
+        checkAndApplyScrolling(
+          songTitleDisplay,
+          songTitleDisplay.parentElement
+        );
+      if (songArtistDisplay.parentElement)
+        checkAndApplyScrolling(
+          songArtistDisplay,
+          songArtistDisplay.parentElement
+        );
     }
   }
 
   // --- Audio Player Event Handlers ---
   if (audioPlayer) {
     audioPlayer.addEventListener("loadedmetadata", () => {
-      if (durationDisplay && seekBar && currentlyPlayingInfo) {
+      if (
+        durationDisplay &&
+        seekBar &&
+        audioPlayer.duration &&
+        !isNaN(audioPlayer.duration)
+      ) {
         durationDisplay.textContent = formatTime(audioPlayer.duration);
         seekBar.max = audioPlayer.duration;
         if (
+          currentlyPlayingInfo &&
           currentlyPlayingInfo.path === audioPlayer.src &&
           (currentlyPlayingInfo.durationRaw == null ||
             isNaN(currentlyPlayingInfo.durationRaw))
@@ -223,22 +264,28 @@ document.addEventListener("DOMContentLoaded", () => {
             audioPlayer.duration
           );
         }
+      } else if (durationDisplay && seekBar) {
+        durationDisplay.textContent = formatTime(0);
+        seekBar.max = 0;
       }
     });
     audioPlayer.addEventListener("timeupdate", () => {
-      if (currentTimeDisplay && seekBar && audioPlayer.duration) {
+      if (
+        currentTimeDisplay &&
+        seekBar &&
+        audioPlayer.duration &&
+        !isNaN(audioPlayer.duration)
+      ) {
         currentTimeDisplay.textContent = formatTime(audioPlayer.currentTime);
         seekBar.value = audioPlayer.currentTime;
+      } else if (currentTimeDisplay && seekBar) {
+        currentTimeDisplay.textContent = formatTime(0);
+        if (seekBar.value !== "0") seekBar.value = 0;
       }
     });
     audioPlayer.addEventListener("play", () => {
-      if (
-        audioPlayer.src &&
-        audioPlayer.src !== "" &&
-        !audioPlayer.src.endsWith("index.html")
-      ) {
+      if (audioPlayer.src && !audioPlayer.src.endsWith("index.html"))
         isPlayerExplicitlyStopped = false;
-      }
       if (playPauseBtn) playPauseBtn.innerHTML = pauseIcon;
       renderPlaylist();
     });
@@ -247,86 +294,75 @@ document.addEventListener("DOMContentLoaded", () => {
       renderPlaylist();
     });
     audioPlayer.addEventListener("ended", () => {
-      currentlyPlayingInfo = null;
       isPlayerExplicitlyStopped = true;
       if (audioPlayer) audioPlayer.src = "";
       playNextTrackLogic();
     });
     audioPlayer.addEventListener("error", (e) => {
-      const erroredSrc = e.target.src;
-      const cpiPathBeforeError = currentlyPlayingInfo?.path;
+      const errSrc = e.target.src;
+      const cpiErr = { ...(currentlyPlayingInfo || {}) };
       currentlyPlayingInfo = null;
       isPlayerExplicitlyStopped = true;
-      if (
-        audioPlayer &&
-        audioPlayer.src === erroredSrc &&
-        audioPlayer.src !== ""
-      ) {
+      if (audioPlayer && audioPlayer.src === errSrc && audioPlayer.src !== "") {
         audioPlayer.src = "";
         audioPlayer.load();
       }
-      if (songNameDisplay) {
-        const trackName =
-          playlist.find((t) => t.path === cpiPathBeforeError)?.name ||
-          (erroredSrc ? getFileName(erroredSrc) : "track");
-        updateSongDisplay(`Error: Could not play (${trackName || "Unknown"})`);
+      const errName =
+        cpiErr?.title ||
+        cpiErr?.name ||
+        (errSrc ? getFileName(errSrc) : "track");
+      updateTrackInfoDisplay(`Error: (${errName})`, "Could not play file");
+      if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
+      if (durationDisplay) durationDisplay.textContent = formatTime(0);
+      if (seekBar) {
+        seekBar.value = 0;
+        seekBar.max = 0;
       }
       renderPlaylist();
     });
     audioPlayer.addEventListener("volumechange", () => {
       updateVolumeSliderFill();
       updateVolumeIcon();
-      if (
-        window.electronAPI &&
-        typeof window.electronAPI.saveVolume === "function"
-      ) {
+      if (window.electronAPI?.saveVolume)
         window.electronAPI.saveVolume(audioPlayer.volume);
-      }
     });
   }
 
   // --- UI Control Event Handlers ---
   if (playPauseBtn) {
     playPauseBtn.addEventListener("click", () => {
-      if (audioPlayer) {
-        if (audioPlayer.paused) {
-          const hasValidSrcAndInfo =
-            audioPlayer.src &&
-            audioPlayer.src !== "" &&
-            !audioPlayer.src.endsWith("index.html") &&
-            currentlyPlayingInfo;
-          if (isPlayerExplicitlyStopped && !hasValidSrcAndInfo) {
-            if (playlist.length > 0) {
-              let indexToPlay =
-                currentTrackIndex !== -1 && currentTrackIndex < playlist.length
-                  ? currentTrackIndex
-                  : 0;
-              if (playlist[indexToPlay]) {
-                playTrack(
-                  indexToPlay,
-                  "playPauseBtn_stopped_emptySrc_playlistHasItems"
-                );
-              }
-            }
-          } else if (hasValidSrcAndInfo) {
-            audioPlayer.play().catch((e) => {
-              updateSongDisplay("Error: Could not play.");
-            });
-          } else if (playlist.length > 0) {
-            let indexToPlay =
+      if (!audioPlayer) return;
+      if (audioPlayer.paused) {
+        const validSrc =
+          audioPlayer.src &&
+          !audioPlayer.src.endsWith("index.html") &&
+          currentlyPlayingInfo;
+        if (isPlayerExplicitlyStopped && !validSrc) {
+          if (playlist.length > 0) {
+            let idx =
               currentTrackIndex !== -1 && currentTrackIndex < playlist.length
                 ? currentTrackIndex
                 : 0;
-            if (playlist[indexToPlay]) {
-              playTrack(
-                indexToPlay,
-                "playPauseBtn_paused_emptySrc_playlistHasItems"
-              );
-            }
+            if (playlist[idx]) playTrack(idx, "playPause_stopped");
           }
-        } else {
-          audioPlayer.pause();
+        } else if (validSrc) {
+          audioPlayer
+            .play()
+            .catch((e) =>
+              updateTrackInfoDisplay(
+                "Error.",
+                currentlyPlayingInfo?.artist || ""
+              )
+            );
+        } else if (playlist.length > 0) {
+          let idx =
+            currentTrackIndex !== -1 && currentTrackIndex < playlist.length
+              ? currentTrackIndex
+              : 0;
+          if (playlist[idx]) playTrack(idx, "playPause_noSrc");
         }
+      } else {
+        audioPlayer.pause();
       }
     });
   }
@@ -340,59 +376,47 @@ document.addEventListener("DOMContentLoaded", () => {
         audioPlayer.currentTime = 0;
       }
       currentlyPlayingInfo = null;
-      updateSongDisplay(PLACEHOLDER_SONG_NAME);
-      if (durationDisplay && seekBar) {
-        durationDisplay.textContent = formatTime(0);
-        if (seekBar) {
-          seekBar.value = 0;
-          seekBar.max = 0;
-        }
+      updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
+      if (durationDisplay) durationDisplay.textContent = formatTime(0);
+      if (seekBar) {
+        seekBar.value = 0;
+        seekBar.max = 0;
       }
-      if (currentTimeDisplay) {
-        currentTimeDisplay.textContent = formatTime(0);
-      }
-      if (playPauseBtn) {
-        playPauseBtn.innerHTML = playIcon;
-      }
+      if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
+      if (playPauseBtn) playPauseBtn.innerHTML = playIcon;
+      currentTrackIndex = -1;
       renderPlaylist();
     });
   }
-  if (fastForwardBtn) {
+  if (fastForwardBtn)
     fastForwardBtn.addEventListener("click", () => {
       if (
-        audioPlayer &&
-        audioPlayer.src &&
+        audioPlayer?.src &&
         !isNaN(audioPlayer.duration) &&
         audioPlayer.readyState >= 2
-      ) {
+      )
         audioPlayer.currentTime = Math.min(
           audioPlayer.duration,
           audioPlayer.currentTime + 10
         );
-      }
     });
-  }
-  if (seekBar) {
+  if (seekBar)
     seekBar.addEventListener("input", () => {
       if (
-        audioPlayer &&
-        audioPlayer.src &&
+        audioPlayer?.src &&
         !isNaN(audioPlayer.duration) &&
         audioPlayer.readyState >= 2
-      ) {
+      )
         audioPlayer.currentTime = parseFloat(seekBar.value);
-      }
     });
-  }
-  if (volumeSlider) {
+  if (volumeSlider)
     volumeSlider.addEventListener("input", () => {
       if (audioPlayer) {
         audioPlayer.muted = false;
         audioPlayer.volume = parseFloat(volumeSlider.value);
       }
     });
-  }
-  if (volumeIcon) {
+  if (volumeIcon)
     volumeIcon.addEventListener("click", () => {
       if (audioPlayer) {
         audioPlayer.muted = !audioPlayer.muted;
@@ -401,32 +425,23 @@ document.addEventListener("DOMContentLoaded", () => {
           audioPlayer.volume = dUV;
           if (volumeSlider) volumeSlider.value = dUV.toString();
         }
-        updateVolumeIcon();
-        updateVolumeSliderFill();
       }
     });
-  }
 
   // --- Playlist Logic Functions ---
   function renderPlaylist() {
-    if (!playlistUL) {
-      console.error("renderPlaylist: playlistUL is null!");
-      return;
-    }
+    if (!playlistUL) return;
     const scrollTop = playlistUL.scrollTop;
     playlistUL.innerHTML = "";
     selectedIndices = selectedIndices.filter((idx) => idx < playlist.length);
-
     if (playlist.length === 0) {
-      /* Below is not required as this will cause design issue */
-      // const li = document.createElement("li");
-      // li.className = "playlist-drop-target";
-      // li.textContent = 'Drag songs here or use "Add Files"'; // RESTORED placeholder text
-      // playlistUL.appendChild(li);
-      // playlistUL.scrollTop = scrollTop;
+      const li = document.createElement("li");
+      li.className = "playlist-drop-target";
+      li.textContent = 'Drag & drop audio files here or use "Add Files"';
+      playlistUL.appendChild(li);
+      playlistUL.scrollTop = scrollTop;
       return;
     }
-
     playlist.forEach((track, index) => {
       const li = document.createElement("li");
       li.draggable = true;
@@ -448,20 +463,14 @@ document.addEventListener("DOMContentLoaded", () => {
         "drop-target-below"
       );
       if (
-        currentlyPlayingInfo &&
-        currentlyPlayingInfo.path === track.path &&
+        currentlyPlayingInfo?.path === track.path &&
         !audioPlayer.paused &&
         !audioPlayer.ended &&
         !isPlayerExplicitlyStopped
-      ) {
+      )
         li.classList.add("playing-actual");
-      }
-      if (index === currentTrackIndex) {
-        li.classList.add("selected-ui");
-      }
-      if (selectedIndices.includes(index)) {
-        li.classList.add("selected");
-      }
+      if (index === currentTrackIndex) li.classList.add("selected-ui");
+      if (selectedIndices.includes(index)) li.classList.add("selected");
       li.addEventListener("click", (e) => {
         if (e.shiftKey && lastClickedIndex !== -1) {
           selectedIndices = [];
@@ -483,7 +492,7 @@ document.addEventListener("DOMContentLoaded", () => {
       li.addEventListener("dblclick", () => {
         currentTrackIndex = index;
         selectedIndices = [index];
-        playTrack(index, "playlistItemDblClick");
+        playTrack(index, "dblclick");
       });
       li.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -493,18 +502,14 @@ document.addEventListener("DOMContentLoaded", () => {
             currentTrackIndex = index;
             lastClickedIndex = index;
           } else {
-            selectedIndices.push(index);
+            if (!selectedIndices.includes(index)) selectedIndices.push(index);
           }
           renderPlaylist();
         }
-        if (
-          window.electronAPI &&
-          typeof window.electronAPI.showPlaylistContextMenu === "function"
-        ) {
+        if (window.electronAPI?.showPlaylistContextMenu)
           window.electronAPI.showPlaylistContextMenu(index, [
             ...selectedIndices,
           ]);
-        }
       });
       li.addEventListener("dragstart", (e) => {
         draggedItemIndex = index;
@@ -515,10 +520,10 @@ document.addEventListener("DOMContentLoaded", () => {
       li.addEventListener("dragend", (e) => {
         if (e.target instanceof HTMLElement) e.target.style.opacity = "1";
         playlistUL
-          .querySelectorAll("li.drop-target-above, li.drop-target-below")
-          .forEach((item) => {
-            item.classList.remove("drop-target-above", "drop-target-below");
-          });
+          .querySelectorAll(".drop-target-above, .drop-target-below")
+          .forEach((i) =>
+            i.classList.remove("drop-target-above", "drop-target-below")
+          );
         draggedItemIndex = null;
         dropTargetIndex = null;
       });
@@ -531,167 +536,141 @@ document.addEventListener("DOMContentLoaded", () => {
     playFirstNew = false,
     insertAtIndex = -1
   ) {
-    const oldPlaylistLength = playlist.length;
-    let firstNewTrackActualIndexInPlaylist = -1;
-    let newTracksAddedCount = 0;
-    const originalSongNameOnDisplay = songNameDisplay
-      ? songNameDisplay.textContent
-      : PLACEHOLDER_SONG_NAME;
-    const existingPathsInPlaylist = new Set(
-      playlist.map((track) => track.path)
-    );
-    updateSongDisplay("Loading songs...");
-    let tempNewTracks = [];
+    const oldLen = playlist.length;
+    let firstNew = -1;
+    let addedCount = 0;
+    const oTitle = songTitleDisplay?.textContent || PLACEHOLDER_TITLE;
+    const oArtist = songArtistDisplay?.textContent || PLACEHOLDER_ARTIST;
+    const existing = new Set(playlist.map((t) => t.path));
+    updateTrackInfoDisplay("Loading songs...", "");
+    let tempNew = [];
     for (let i = 0; i < filePaths.length; i++) {
-      const path = filePaths[i];
-      if (existingPathsInPlaylist.has(path)) {
-        console.log(`DEBUG: Skipping duplicate: ${path}`);
-        continue;
-      }
-      const name = getFileName(path);
-      if (songNameDisplay && filePaths.length > 1)
-        updateSongDisplay(`Loading: ${name} (${i + 1}/${filePaths.length})`);
-      const durationRaw = await getAudioDuration(path);
-      const durationFormatted =
-        durationRaw != null && !isNaN(durationRaw)
-          ? formatTime(durationRaw)
-          : "--:--";
-      const newTrack = { path, name, durationRaw, durationFormatted };
-      tempNewTracks.push(newTrack);
-      existingPathsInPlaylist.add(path);
-      newTracksAddedCount++;
+      const p = filePaths[i];
+      if (existing.has(p)) continue;
+      const n = getFileName(p);
+      if (filePaths.length > 1)
+        updateTrackInfoDisplay(
+          `Loading: ${n}`,
+          `(${i + 1}/${filePaths.length})`
+        );
+      const m = await fetchTrackMetadata(p);
+      const dR = await getAudioDuration(p);
+      const dF = dR != null && !isNaN(dR) ? formatTime(dR) : "--:--";
+      tempNew.push({
+        path: p,
+        name: n,
+        title: m.title,
+        artist: m.artist,
+        album: m.album,
+        durationRaw: dR,
+        durationFormatted: dF,
+      });
+      existing.add(p);
+      addedCount++;
     }
-    if (newTracksAddedCount > 0) {
-      let actualInsertionPointForPlayback = -1;
+    if (addedCount > 0) {
+      let actualInsert;
       if (insertAtIndex !== -1 && insertAtIndex <= playlist.length) {
-        playlist.splice(insertAtIndex, 0, ...tempNewTracks);
-        actualInsertionPointForPlayback = insertAtIndex;
-        if (currentTrackIndex >= insertAtIndex) {
-          currentTrackIndex += newTracksAddedCount;
-        }
+        playlist.splice(insertAtIndex, 0, ...tempNew);
+        actualInsert = insertAtIndex;
+        if (currentTrackIndex >= insertAtIndex) currentTrackIndex += addedCount;
         selectedIndices = selectedIndices
-          .map((idx) =>
-            idx >= insertAtIndex ? idx + newTracksAddedCount : idx
-          )
+          .map((idx) => (idx >= insertAtIndex ? idx + addedCount : idx))
           .filter((idx) => idx < playlist.length);
-        if (isShuffleActive && originalPlaylistOrder) {
+        if (isShuffleActive && originalPlaylistOrder)
           originalPlaylistOrder.splice(
             insertAtIndex,
             0,
-            ...tempNewTracks.map((t) => ({ ...t }))
+            ...tempNew.map((t) => ({ ...t }))
           );
-        }
       } else {
-        playlist.push(...tempNewTracks);
-        actualInsertionPointForPlayback = oldPlaylistLength;
-        if (isShuffleActive && originalPlaylistOrder) {
-          tempNewTracks.forEach((nt) => {
+        playlist.push(...tempNew);
+        actualInsert = oldLen;
+        if (isShuffleActive && originalPlaylistOrder)
+          tempNew.forEach((nt) => {
             if (!originalPlaylistOrder.some((ot) => ot.path === nt.path))
               originalPlaylistOrder.push({ ...nt });
           });
-        }
       }
-      if (firstNewTrackActualIndexInPlaylist === -1 && tempNewTracks.length > 0)
-        firstNewTrackActualIndexInPlaylist = actualInsertionPointForPlayback;
+      if (firstNew === -1 && tempNew.length > 0) firstNew = actualInsert;
     }
-    if (songNameDisplay) {
-      if (currentlyPlayingInfo) {
-        updateSongDisplay(currentlyPlayingInfo.name);
-      } else if (
-        newTracksAddedCount > 0 &&
-        (playFirstNew || oldPlaylistLength === 0) &&
-        firstNewTrackActualIndexInPlaylist !== -1 &&
-        playlist[firstNewTrackActualIndexInPlaylist]
-      ) {
-        updateSongDisplay(playlist[firstNewTrackActualIndexInPlaylist].name);
-      } else if (originalSongNameOnDisplay !== "Loading songs...") {
-        updateSongDisplay(originalSongNameOnDisplay);
-      } else {
-        updateSongDisplay(PLACEHOLDER_SONG_NAME);
-      }
-    }
-    renderPlaylist();
-    if (
-      newTracksAddedCount > 0 &&
-      (playFirstNew || oldPlaylistLength === 0) &&
-      firstNewTrackActualIndexInPlaylist !== -1
-    ) {
-      playTrack(
-        firstNewTrackActualIndexInPlaylist,
-        "addFilesToPlaylist_playFirstNew"
+    if (currentlyPlayingInfo)
+      updateTrackInfoDisplay(
+        currentlyPlayingInfo.title,
+        currentlyPlayingInfo.artist
       );
-    } else if (newTracksAddedCount === 0 && filePaths.length > 0) {
-      console.log("DEBUG: addFilesToPlaylist - All files were duplicates.");
-    }
+    else if (
+      addedCount > 0 &&
+      (playFirstNew || oldLen === 0) &&
+      firstNew !== -1 &&
+      playlist[firstNew]
+    ) {
+      const fT = playlist[firstNew];
+      updateTrackInfoDisplay(fT.title, fT.artist);
+    } else if (oTitle !== "Loading songs...")
+      updateTrackInfoDisplay(oTitle, oArtist);
+    else updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
+    renderPlaylist();
+    if (addedCount > 0 && (playFirstNew || oldLen === 0) && firstNew !== -1)
+      playTrack(firstNew, "addFiles_playFirst");
   }
   function playTrack(index, calledFrom = "unknown") {
-    console.log(
-      `DEBUG: playTrack - CALLED from "${calledFrom}" with index: ${index}`
-    );
-    if (!audioPlayer || !songNameDisplay) {
-      return;
-    }
-    currentTrackIndex = index;
+    console.log(`DEBUG: playTrack - ${calledFrom} index: ${index}`);
+    if (!audioPlayer || !songTitleDisplay || !songArtistDisplay) return;
     if (index >= 0 && index < playlist.length) {
+      currentTrackIndex = index;
       selectedIndices = [index];
       lastClickedIndex = index;
-      const trackToLoad = playlist[index];
-      if (
-        trackToLoad &&
-        typeof trackToLoad.path === "string" &&
-        trackToLoad.path.trim() !== ""
-      ) {
-        const needsNewSrc =
-          currentlyPlayingInfo?.path !== trackToLoad.path ||
+      const track = playlist[index];
+      if (track?.path) {
+        const needsNew =
+          currentlyPlayingInfo?.path !== track.path ||
           isPlayerExplicitlyStopped ||
           audioPlayer.error ||
           audioPlayer.ended ||
           !audioPlayer.src ||
-          audioPlayer.src === "" ||
           audioPlayer.src.endsWith("index.html") ||
           audioPlayer.src === window.location.href + "#";
-        if (needsNewSrc) {
-          audioPlayer.src = trackToLoad.path;
-          currentlyPlayingInfo = { ...trackToLoad };
-          updateSongDisplay(trackToLoad.name);
-          const playPromise = audioPlayer.play();
-          if (playPromise !== undefined) {
-            playPromise
-              .then(() => {
-                isPlayerExplicitlyStopped = false;
-              })
-              .catch((e) => {
-                updateSongDisplay(`Error: (${trackToLoad.name || "track"})`);
-                currentlyPlayingInfo = null;
-                isPlayerExplicitlyStopped = true;
-                if (audioPlayer) {
-                  audioPlayer.src = "";
-                  audioPlayer.load();
-                }
-              });
-          } else {
-            isPlayerExplicitlyStopped = true;
+        if (needsNew) {
+          audioPlayer.src = track.path;
+          currentlyPlayingInfo = { ...track };
+          updateTrackInfoDisplay(track.title, track.artist);
+          if (currentTimeDisplay)
+            currentTimeDisplay.textContent = formatTime(0);
+          if (durationDisplay) durationDisplay.textContent = formatTime(0);
+          if (seekBar) {
+            seekBar.value = 0;
+            seekBar.max = 0;
           }
-        } else {
-          updateSongDisplay(trackToLoad.name);
-          if (audioPlayer.paused) {
-            audioPlayer.play().catch((e) => {
+          const pP = audioPlayer.play();
+          if (pP)
+            pP.then(() => (isPlayerExplicitlyStopped = false)).catch((e) => {
+              updateTrackInfoDisplay(
+                `Error: (${track.title || track.name})`,
+                "Playback failed"
+              );
+              currentlyPlayingInfo = null;
               isPlayerExplicitlyStopped = true;
+              if (audioPlayer) {
+                audioPlayer.src = "";
+                audioPlayer.load();
+              }
             });
-          }
+          else isPlayerExplicitlyStopped = true;
+        } else {
+          updateTrackInfoDisplay(track.title, track.artist);
+          if (audioPlayer.paused)
+            audioPlayer.play().catch((e) => (isPlayerExplicitlyStopped = true));
         }
       } else {
-        if (!currentlyPlayingInfo) {
-          updateSongDisplay(`Error: Invalid track data.`);
-        }
+        if (!currentlyPlayingInfo)
+          updateTrackInfoDisplay("Error: Invalid track.", "");
       }
     } else {
       if (
         isPlayerExplicitlyStopped ||
         !audioPlayer.src ||
-        audioPlayer.src === "" ||
-        audioPlayer.src.endsWith("index.html") ||
-        audioPlayer.src === window.location.href + "#"
+        audioPlayer.src.endsWith("index.html")
       ) {
         if (audioPlayer) {
           audioPlayer.pause();
@@ -699,12 +678,13 @@ document.addEventListener("DOMContentLoaded", () => {
           audioPlayer.load();
         }
         currentlyPlayingInfo = null;
-        updateSongDisplay(PLACEHOLDER_SONG_NAME);
+        updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
         if (durationDisplay && seekBar) {
           durationDisplay.textContent = formatTime(0);
           seekBar.value = 0;
           seekBar.max = 0;
         }
+        if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
         currentTrackIndex = -1;
         isPlayerExplicitlyStopped = true;
       }
@@ -712,52 +692,52 @@ document.addEventListener("DOMContentLoaded", () => {
     renderPlaylist();
   }
   function removeTracks(indicesToRemove) {
-    if (!indicesToRemove || indicesToRemove.length === 0) return;
+    if (!indicesToRemove?.length) return;
     indicesToRemove.sort((a, b) => b - a);
-    let newUiCurrentIndex = currentTrackIndex;
-    let actualPlayingTrackWasRemovedFromList = false;
-    indicesToRemove.forEach((indexToRemove) => {
-      if (indexToRemove < 0 || indexToRemove >= playlist.length) return;
-      const removedTrack = playlist.splice(indexToRemove, 1)[0];
-      if (
-        removedTrack &&
-        currentlyPlayingInfo &&
-        removedTrack.path === currentlyPlayingInfo.path
-      )
-        actualPlayingTrackWasRemovedFromList = true;
+    let newUiIdx = currentTrackIndex;
+    let playingRemoved = false;
+    indicesToRemove.forEach((idxR) => {
+      if (idxR < 0 || idxR >= playlist.length) return;
+      const rem = playlist.splice(idxR, 1)[0];
+      if (rem && currentlyPlayingInfo?.path === rem.path) playingRemoved = true;
       if (isShuffleActive && originalPlaylistOrder) {
-        const oI = originalPlaylistOrder.findIndex(
-          (t) => t.path === removedTrack?.path
-        );
+        const oI = originalPlaylistOrder.findIndex((t) => t.path === rem?.path);
         if (oI > -1) originalPlaylistOrder.splice(oI, 1);
       }
-      if (indexToRemove === newUiCurrentIndex) {
-      } else if (indexToRemove < newUiCurrentIndex) {
-        newUiCurrentIndex--;
-      }
+      if (idxR < newUiIdx) newUiIdx--;
     });
     if (playlist.length === 0) {
       currentTrackIndex = -1;
-      if (actualPlayingTrackWasRemovedFromList || !currentlyPlayingInfo) {
-        if (audioPlayer) {
-          audioPlayer.pause();
-          audioPlayer.removeAttribute("src");
-          audioPlayer.load();
-        }
-        currentlyPlayingInfo = null;
-        updateSongDisplay(PLACEHOLDER_SONG_NAME);
-        if (durationDisplay && seekBar) {
-          durationDisplay.textContent = formatTime(0);
-          seekBar.value = 0;
-          seekBar.max = 0;
-        }
-        isPlayerExplicitlyStopped = true;
+      if (audioPlayer) {
+        audioPlayer.pause();
+        audioPlayer.removeAttribute("src");
+        audioPlayer.load();
       }
+      currentlyPlayingInfo = null;
+      updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
+      if (durationDisplay && seekBar) {
+        durationDisplay.textContent = formatTime(0);
+        seekBar.value = 0;
+        seekBar.max = 0;
+      }
+      if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
+      isPlayerExplicitlyStopped = true;
     } else {
-      currentTrackIndex = Math.min(newUiCurrentIndex, playlist.length - 1);
-      if (currentTrackIndex < 0) currentTrackIndex = 0;
-      if (actualPlayingTrackWasRemovedFromList && !currentlyPlayingInfo) {
-        playTrack(currentTrackIndex, "removeTracks_nextAfterRemovedPlaying");
+      currentTrackIndex = Math.max(0, Math.min(newUiIdx, playlist.length - 1));
+      if (playingRemoved) {
+        if (playlist[currentTrackIndex] && currentTrackIndex !== -1)
+          playTrack(currentTrackIndex, "remove_playNext");
+        else {
+          if (audioPlayer) {
+            audioPlayer.pause();
+            audioPlayer.removeAttribute("src");
+            audioPlayer.load();
+          }
+          currentlyPlayingInfo = null;
+          updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
+          isPlayerExplicitlyStopped = true;
+          currentTrackIndex = -1;
+        }
       }
     }
     selectedIndices =
@@ -768,65 +748,26 @@ document.addEventListener("DOMContentLoaded", () => {
     if (
       !currentlyPlayingInfo &&
       playlist.length > 0 &&
-      currentTrackIndex !== -1
+      currentTrackIndex !== -1 &&
+      playlist[currentTrackIndex]
     ) {
-      updateSongDisplay(playlist[currentTrackIndex].name);
-    } else if (!currentlyPlayingInfo) {
-      updateSongDisplay(PLACEHOLDER_SONG_NAME);
-    } else if (currentlyPlayingInfo && songNameDisplay) {
-      updateSongDisplay(currentlyPlayingInfo.name);
-    }
+      const curD = playlist[currentTrackIndex];
+      updateTrackInfoDisplay(curD.title, curD.artist);
+    } else if (!currentlyPlayingInfo)
+      updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
     renderPlaylist();
   }
   function playNextTrackLogic() {
-    if (playlist.length === 0) {
-      if (audioPlayer) {
-        audioPlayer.pause();
-        audioPlayer.removeAttribute("src");
-        audioPlayer.load();
-      }
-      currentlyPlayingInfo = null;
-      isPlayerExplicitlyStopped = true;
-      updateSongDisplay(PLACEHOLDER_SONG_NAME);
-      if (durationDisplay && seekBar) {
-        durationDisplay.textContent = formatTime(0);
-        seekBar.value = 0;
-        seekBar.max = 0;
-      }
-      currentTrackIndex = -1;
-      renderPlaylist();
-      return;
-    }
-    let newIndex = currentTrackIndex + 1;
-    if (newIndex >= playlist.length) {
-      newIndex = 0;
-    }
-    playTrack(newIndex, "playNextTrackLogic");
+    if (playlist.length === 0) return;
+    let newIdx = currentTrackIndex + 1;
+    if (newIdx >= playlist.length) newIdx = 0;
+    playTrack(newIdx, "nextLogic");
   }
   function playPrevTrackLogic() {
-    if (playlist.length === 0) {
-      if (audioPlayer) {
-        audioPlayer.pause();
-        audioPlayer.removeAttribute("src");
-        audioPlayer.load();
-      }
-      currentlyPlayingInfo = null;
-      isPlayerExplicitlyStopped = true;
-      updateSongDisplay(PLACEHOLDER_SONG_NAME);
-      if (durationDisplay && seekBar) {
-        durationDisplay.textContent = formatTime(0);
-        seekBar.value = 0;
-        seekBar.max = 0;
-      }
-      currentTrackIndex = -1;
-      renderPlaylist();
-      return;
-    }
-    let newIndex = currentTrackIndex - 1;
-    if (newIndex < 0) {
-      newIndex = playlist.length - 1;
-    }
-    playTrack(newIndex, "playPrevTrackLogic");
+    if (playlist.length === 0) return;
+    let newIdx = currentTrackIndex - 1;
+    if (newIdx < 0) newIdx = playlist.length - 1;
+    playTrack(newIdx, "prevLogic");
   }
   function updateShuffleButtonUI() {
     if (!shuffleBtn) return;
@@ -838,147 +779,104 @@ document.addEventListener("DOMContentLoaded", () => {
     if (playlist.length < 2) return;
     const cPIS = currentlyPlayingInfo ? { ...currentlyPlayingInfo } : null;
     if (
-      !originalPlaylistOrder ||
-      originalPlaylistOrder.length === 0 ||
-      playlist.some((track, i) => track.path !== originalPlaylistOrder[i]?.path)
-    ) {
-      originalPlaylistOrder = playlist.map((track) => ({ ...track }));
-    }
+      !originalPlaylistOrder?.length ||
+      playlist.some((t, i) => t.path !== originalPlaylistOrder[i]?.path)
+    )
+      originalPlaylistOrder = playlist.map((t) => ({ ...t }));
     for (let i = playlist.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [playlist[i], playlist[j]] = [playlist[j], playlist[i]];
     }
     if (cPIS) {
-      currentTrackIndex = playlist.findIndex(
-        (track) => track.path === cPIS.path
-      );
-      if (currentTrackIndex === -1 && playlist.length > 0) {
+      currentTrackIndex = playlist.findIndex((t) => t.path === cPIS.path);
+      if (currentTrackIndex === -1 && playlist.length > 0)
         currentTrackIndex = 0;
-      }
-    } else if (playlist.length > 0) {
-      currentTrackIndex = 0;
-    } else {
-      currentTrackIndex = -1;
-    }
+    } else if (playlist.length > 0) currentTrackIndex = 0;
+    else currentTrackIndex = -1;
     selectedIndices = currentTrackIndex > -1 ? [currentTrackIndex] : [];
     lastClickedIndex = currentTrackIndex;
   }
   function unshufflePlaylist() {
-    if (originalPlaylistOrder && originalPlaylistOrder.length > 0) {
+    if (originalPlaylistOrder?.length) {
       const cPIS = currentlyPlayingInfo ? { ...currentlyPlayingInfo } : null;
-      playlist = originalPlaylistOrder.map((track) => ({ ...track }));
+      playlist = originalPlaylistOrder.map((t) => ({ ...t }));
       if (cPIS) {
-        currentTrackIndex = playlist.findIndex(
-          (track) => track.path === cPIS.path
-        );
+        currentTrackIndex = playlist.findIndex((t) => t.path === cPIS.path);
         if (currentTrackIndex === -1 && playlist.length > 0)
           currentTrackIndex = 0;
-      } else if (playlist.length > 0) {
-        currentTrackIndex = 0;
-      } else {
-        currentTrackIndex = -1;
-      }
+      } else if (playlist.length > 0) currentTrackIndex = 0;
+      else currentTrackIndex = -1;
       selectedIndices = currentTrackIndex > -1 ? [currentTrackIndex] : [];
       lastClickedIndex = currentTrackIndex;
+      originalPlaylistOrder = [];
     }
   }
 
-  // --- Event Listeners ---
+  // --- Event Listeners for Playback/File Controls ---
   if (prevBtn) prevBtn.addEventListener("click", playPrevTrackLogic);
   if (nextBtn) nextBtn.addEventListener("click", playNextTrackLogic);
-  if (shuffleBtn) {
+  if (shuffleBtn)
     shuffleBtn.addEventListener("click", () => {
       isShuffleActive = !isShuffleActive;
-      if (isShuffleActive) {
-        shuffleCurrentPlaylist();
-      } else {
-        unshufflePlaylist();
-      }
+      if (isShuffleActive) shuffleCurrentPlaylist();
+      else unshufflePlaylist();
       updateShuffleButtonUI();
       renderPlaylist();
     });
-  }
-  if (addFilesBtn) {
+  if (addFilesBtn)
     addFilesBtn.addEventListener("click", async () => {
       try {
-        if (
-          window.electronAPI &&
-          typeof window.electronAPI.openFiles === "function"
-        ) {
-          const filePaths = await window.electronAPI.openFiles();
-          if (filePaths && filePaths.length > 0) {
-            await addFilesToPlaylist(filePaths, playlist.length === 0, -1);
-          }
-        } else {
-          console.error("window.electronAPI.openFiles is not available.");
-        }
-      } catch (error) {
-        console.error("Error in addFilesBtn click handler:", error);
+        if (window.electronAPI?.openFiles) {
+          const p = await window.electronAPI.openFiles();
+          if (p?.length) await addFilesToPlaylist(p, playlist.length === 0, -1);
+        } else console.error("API missing.");
+      } catch (err) {
+        console.error("Add files err:", err);
       }
     });
-  }
+
+  // --- Playlist Toggle Logic ---
   function updatePlaylistToggleBtnTextDOM() {
-    if (!playlistToggleBtn || !playlistContainer) {
-      return;
-    }
-    const isHidden = playlistContainer.classList.contains("hidden");
+    if (!playlistToggleBtn || !playlistContainer) return;
+    const hidden = playlistContainer.classList.contains("hidden");
     playlistToggleBtn.innerHTML = `<i class="fas fa-list-ul"></i> ${
-      isHidden ? "Show" : "Hide"
+      hidden ? "Show" : "Hide"
     } Playlist`;
-    playlistToggleBtn.title = `${isHidden ? "Show" : "Hide"} Playlist`;
+    playlistToggleBtn.title = `${hidden ? "Show" : "Hide"} Playlist`;
   }
-  function setPlaylistUIVisibilityDOM(isVisible) {
-    if (!playlistContainer) {
-      return;
-    }
-    if (isVisible) {
+  function setPlaylistUIVisibilityDOM(visible) {
+    if (!playlistContainer || !mainPlayerPanel) return;
+    if (visible) {
       playlistContainer.classList.remove("hidden");
-      if (mainPlayerPanel) mainPlayerPanel.classList.add("with-playlist");
+      mainPlayerPanel.classList.add("with-playlist");
     } else {
       playlistContainer.classList.add("hidden");
-      if (mainPlayerPanel) mainPlayerPanel.classList.remove("with-playlist");
+      mainPlayerPanel.classList.remove("with-playlist");
     }
     updatePlaylistToggleBtnTextDOM();
   }
   function toggleDockedPlaylistDOM() {
-    if (!playlistContainer) {
-      return;
-    }
-    const isCurrentlyHidden = playlistContainer.classList.contains("hidden");
-    const showPlaylist = isCurrentlyHidden;
-    const currentBodyWidth = document.body.offsetWidth;
-    setPlaylistUIVisibilityDOM(showPlaylist);
-    if (
-      window.electronAPI &&
-      typeof window.electronAPI.resizeMainWindowAndSaveVisibility === "function"
-    ) {
-      const heightOption = showPlaylist
-        ? "player_with_playlist"
-        : "player_only";
+    if (!playlistContainer) return;
+    const show = playlistContainer.classList.contains("hidden");
+    setPlaylistUIVisibilityDOM(show);
+    if (window.electronAPI?.resizeMainWindowAndSaveVisibility) {
+      const opt = show ? "player_with_playlist" : "player_only";
       window.electronAPI.resizeMainWindowAndSaveVisibility(
-        currentBodyWidth,
-        heightOption,
-        showPlaylist
+        PLAYER_FIXED_WIDTH,
+        opt,
+        show
       );
-    } else {
-      console.error(
-        "window.electronAPI.resizeMainWindowAndSaveVisibility is not available."
-      );
-    }
+    } else console.error("Resize API missing.");
   }
   if (playlistToggleBtn)
     playlistToggleBtn.addEventListener("click", toggleDockedPlaylistDOM);
   if (closePlaylistPanelBtn)
     closePlaylistPanelBtn.addEventListener("click", () => {
-      if (
-        playlistContainer &&
-        !playlistContainer.classList.contains("hidden")
-      ) {
+      if (playlistContainer && !playlistContainer.classList.contains("hidden"))
         toggleDockedPlaylistDOM();
-      }
     });
 
-  // --- DRAG AND DROP ON PLAYLIST AREA (for reordering and external file drop) ---
+  // --- DRAG AND DROP ---
   if (playlistUL) {
     playlistUL.addEventListener("dragenter", (e) => {
       e.preventDefault();
@@ -993,87 +891,50 @@ document.addEventListener("DOMContentLoaded", () => {
         e.dataTransfer.dropEffect = "copy";
         if (playlistContainer)
           playlistContainer.classList.add("dragover-active");
-      } else {
-        e.dataTransfer.dropEffect = "move";
-      }
+      } else e.dataTransfer.dropEffect = "move";
       if (draggedItemIndex !== null) {
-        const targetLi = e.target.closest("li:not(.playlist-drop-target)");
+        const tLi = e.target.closest("li:not(.playlist-drop-target)");
         playlistUL
-          .querySelectorAll("li.drop-target-above, li.drop-target-below")
-          .forEach((item) =>
-            item.classList.remove("drop-target-above", "drop-target-below")
+          .querySelectorAll(".drop-target-above,.drop-target-below")
+          .forEach((i) =>
+            i.classList.remove("drop-target-above", "drop-target-below")
           );
-        if (targetLi && targetLi.dataset.index !== undefined) {
-          const targetLiIndex = parseInt(targetLi.dataset.index, 10);
-          if (targetLiIndex !== draggedItemIndex) {
-            const rect = targetLi.getBoundingClientRect();
-            if (e.clientY < rect.top + rect.height / 2) {
-              targetLi.classList.add("drop-target-above");
-              dropTargetIndex = targetLiIndex;
+        if (tLi?.dataset.index !== undefined) {
+          const tIdx = parseInt(tLi.dataset.index, 10);
+          if (tIdx !== draggedItemIndex) {
+            const r = tLi.getBoundingClientRect();
+            if (e.clientY < r.top + r.height / 2) {
+              tLi.classList.add("drop-target-above");
+              dropTargetIndex = tIdx;
             } else {
-              targetLi.classList.add("drop-target-below");
-              dropTargetIndex = targetLiIndex + 1;
+              tLi.classList.add("drop-target-below");
+              dropTargetIndex = tIdx + 1;
             }
-          } else {
-            dropTargetIndex = null;
-          }
+          } else dropTargetIndex = null;
         } else {
           dropTargetIndex = playlist.length;
-          const emptyPlaceholder = playlistUL.querySelector(
-            ".playlist-drop-target"
-          );
-          if (emptyPlaceholder)
-            emptyPlaceholder.classList.add("dragover-active-direct");
+          const eP = playlistUL.querySelector(".playlist-drop-target");
+          if (eP) eP.classList.add("dragover-active-direct");
         }
       }
     });
     playlistUL.addEventListener("dragleave", (e) => {
       e.preventDefault();
       e.stopPropagation();
-      if (playlistContainer)
-        playlistContainer.classList.remove("dragover-active");
-      const targetLi = e.target.closest("li"); // This might be null if leaving to outside children
-      if (
-        dragOverPlaylistLi &&
-        (!e.relatedTarget || !playlistUL.contains(e.relatedTarget))
-      ) {
-        // Leaving UL
-        dragOverPlaylistLi.classList.remove(
-          "drop-target-above",
-          "drop-target-below",
-          "dragover-active-direct"
-        );
-        dragOverPlaylistLi = null;
-        dropTargetIndex = null;
-      } else if (
-        dragOverPlaylistLi &&
-        e.target === dragOverPlaylistLi &&
-        e.relatedTarget &&
-        !playlistUL.contains(e.relatedTarget)
-      ) {
-        // Leaving the specific LI to outside
-        dragOverPlaylistLi.classList.remove(
-          "drop-target-above",
-          "drop-target-below",
-          "dragover-active-direct"
-        );
-        dragOverPlaylistLi = null;
-        dropTargetIndex = null;
-      } else if (
-        targetLi &&
-        targetLi === dragOverPlaylistLi &&
-        e.relatedTarget &&
-        targetLi.contains(e.relatedTarget)
-      ) {
-        // Moving within the same li (e.g. over text inside it), do nothing yet.
-      } else if (dragOverPlaylistLi && targetLi !== dragOverPlaylistLi) {
-        // Moved from one li to another (or to empty space)
-        dragOverPlaylistLi.classList.remove(
-          "drop-target-above",
-          "drop-target-below",
-          "dragover-active-direct"
-        );
-        // dropTargetIndex would have been updated by new target's dragover
+      if (e.relatedTarget && !playlistUL.contains(e.relatedTarget)) {
+        if (playlistContainer)
+          playlistContainer.classList.remove("dragover-active");
+        playlistUL
+          .querySelectorAll(
+            ".drop-target-above,.drop-target-below,.playlist-drop-target.dragover-active-direct"
+          )
+          .forEach((i) =>
+            i.classList.remove(
+              "drop-target-above",
+              "drop-target-below",
+              "dragover-active-direct"
+            )
+          );
       }
     });
     playlistUL.addEventListener("drop", async (e) => {
@@ -1083,94 +944,76 @@ document.addEventListener("DOMContentLoaded", () => {
         playlistContainer.classList.remove("dragover-active");
       playlistUL
         .querySelectorAll(
-          "li.drop-target-above, li.drop-target-below, .playlist-drop-target.dragover-active-direct"
+          ".drop-target-above,.drop-target-below,.playlist-drop-target.dragover-active-direct"
         )
-        .forEach((item) =>
-          item.classList.remove(
+        .forEach((i) =>
+          i.classList.remove(
             "drop-target-above",
             "drop-target-below",
             "dragover-active-direct"
           )
         );
-
       if (draggedItemIndex !== null && dropTargetIndex !== null) {
-        // Internal reorder
-        console.log(
-          "Internal reorder drop. Dragged:",
-          draggedItemIndex,
-          "Target:",
-          dropTargetIndex
-        );
         if (
           draggedItemIndex !== dropTargetIndex &&
           draggedItemIndex !== dropTargetIndex - 1
         ) {
-          // Ensure not dropping onto itself
-          const itemToMove = playlist.splice(draggedItemIndex, 1)[0];
-          const actualInsertAt =
+          const item = playlist.splice(draggedItemIndex, 1)[0];
+          const actualAt =
             draggedItemIndex < dropTargetIndex
               ? dropTargetIndex - 1
               : dropTargetIndex;
-          playlist.splice(actualInsertAt, 0, itemToMove);
+          playlist.splice(actualAt, 0, item);
           if (currentlyPlayingInfo) {
-            const newPlayingIdx = playlist.findIndex(
+            const newPlayIdx = playlist.findIndex(
               (t) => t.path === currentlyPlayingInfo.path
             );
-            if (newPlayingIdx !== -1) currentTrackIndex = newPlayingIdx;
+            if (newPlayIdx !== -1) currentTrackIndex = newPlayIdx;
             else {
               currentlyPlayingInfo = null;
               currentTrackIndex = -1;
             }
-          } else if (playlist.length > 0) {
-            currentTrackIndex =
-              actualInsertAt < playlist.length ? actualInsertAt : 0;
-          } else {
-            currentTrackIndex = -1;
-          }
+          } else if (playlist.length > 0)
+            currentTrackIndex = actualAt < playlist.length ? actualAt : 0;
+          else currentTrackIndex = -1;
+          selectedIndices = [currentTrackIndex];
+          lastClickedIndex = currentTrackIndex;
           if (
             isShuffleActive &&
             originalPlaylistOrder.length === playlist.length
           ) {
-            const movedOriginalItem = originalPlaylistOrder.splice(
-              draggedItemIndex,
-              1
-            )[0];
-            originalPlaylistOrder.splice(actualInsertAt, 0, movedOriginalItem);
+            const movedO = originalPlaylistOrder.splice(draggedItemIndex, 1)[0];
+            originalPlaylistOrder.splice(actualAt, 0, movedO);
           }
           renderPlaylist();
         }
       } else {
-        // External file drop onto playlistUL
         const files = e.dataTransfer.files;
-        if (files && files.length > 0) {
-          const audioFilePaths = Array.from(files)
+        if (files?.length) {
+          const audioP = Array.from(files)
             .filter(
               (f) =>
                 f.type.startsWith("audio/") ||
                 /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(f.name)
             )
             .map((f) => f.path);
-          if (audioFilePaths.length > 0) {
-            let insertAtIndexForExternal = playlist.length; // Default to append for external files
-            const dropOnLi = e.target.closest("li:not(.playlist-drop-target)");
-            if (dropOnLi && dropOnLi.dataset.index !== undefined) {
-              const targetIdx = parseInt(dropOnLi.dataset.index, 10);
-              const rect = dropOnLi.getBoundingClientRect();
-              if (e.clientY < rect.top + rect.height / 2) {
-                insertAtIndexForExternal = targetIdx;
-              } else {
-                insertAtIndexForExternal = targetIdx + 1;
-              }
+          if (audioP.length > 0) {
+            let insExtIdx = playlist.length;
+            const dLi = e.target.closest("li:not(.playlist-drop-target)");
+            if (dLi?.dataset.index !== undefined) {
+              const tI = parseInt(dLi.dataset.index, 10);
+              const r = dLi.getBoundingClientRect();
+              if (e.clientY < r.top + r.height / 2) insExtIdx = tI;
+              else insExtIdx = tI + 1;
             } else if (
               playlistUL.querySelector(".playlist-drop-target") &&
               playlist.length === 0
-            ) {
-              insertAtIndexForExternal = 0;
-            }
+            )
+              insExtIdx = 0;
             await addFilesToPlaylist(
-              audioFilePaths,
-              playlist.length === 0 && insertAtIndexForExternal <= 0,
-              insertAtIndexForExternal
+              audioP,
+              playlist.length === 0 && insExtIdx <= 0,
+              insExtIdx
             );
           }
         }
@@ -1179,118 +1022,164 @@ document.addEventListener("DOMContentLoaded", () => {
       dropTargetIndex = null;
     });
   }
-
-  // Fallback body drop (appends to playlist)
   const bodyDropZone = document.body;
-  if (bodyDropZone && bodyDropZone !== playlistUL) {
+  if (bodyDropZone && mainPlayerPanel) {
     bodyDropZone.addEventListener("dragover", (e) => {
-      if (!playlistUL.contains(e.target) && !e.target.closest("#playlistUL")) {
+      if (playlistUL.contains(e.target)) {
+        if (mainPlayerPanel.classList.contains("dragover-body"))
+          mainPlayerPanel.classList.remove("dragover-body");
+        return;
+      }
+      if (e.dataTransfer.types.includes("Files")) {
         e.preventDefault();
         e.stopPropagation();
         e.dataTransfer.dropEffect = "copy";
-        if (mainPlayerPanel) mainPlayerPanel.classList.add("dragover-body");
+        mainPlayerPanel.classList.add("dragover-body");
+      } else if (draggedItemIndex !== null) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "none";
+        if (mainPlayerPanel.classList.contains("dragover-body"))
+          mainPlayerPanel.classList.remove("dragover-body");
       }
     });
     bodyDropZone.addEventListener("dragleave", (e) => {
-      if (
-        !playlistUL.contains(e.relatedTarget) &&
-        !e.relatedTarget?.closest("#playlistUL")
-      ) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (mainPlayerPanel) mainPlayerPanel.classList.remove("dragover-body");
+      if (mainPlayerPanel.classList.contains("dragover-body")) {
+        if (!e.relatedTarget || !mainPlayerPanel.contains(e.relatedTarget))
+          mainPlayerPanel.classList.remove("dragover-body");
       }
     });
     bodyDropZone.addEventListener("drop", async (e) => {
-      if (!playlistUL.contains(e.target) && !e.target.closest("#playlistUL")) {
+      if (playlistUL.contains(e.target)) return;
+      if (e.dataTransfer.types.includes("Files")) {
         e.preventDefault();
         e.stopPropagation();
-        if (mainPlayerPanel) mainPlayerPanel.classList.remove("dragover-body");
+        mainPlayerPanel.classList.remove("dragover-body");
         const files = e.dataTransfer.files;
-        if (files && files.length > 0) {
-          const audioFilePaths = Array.from(files)
+        if (files?.length) {
+          const audioP = Array.from(files)
             .filter(
               (f) =>
                 f.type.startsWith("audio/") ||
                 /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(f.name)
             )
             .map((f) => f.path);
-          if (audioFilePaths.length > 0) {
-            await addFilesToPlaylist(audioFilePaths, playlist.length === 0, -1);
-          }
+          if (audioP.length > 0)
+            await addFilesToPlaylist(audioP, playlist.length === 0, -1);
         }
       }
     });
   }
 
   // --- IPC Event Handlers ---
-  if (
-    window.electronAPI &&
-    typeof window.electronAPI.onContextMenuCommand === "function"
-  ) {
-    window.electronAPI.onContextMenuCommand((command, data) => {
-      if (command === "remove-tracks") removeTracks(data);
+  if (window.electronAPI?.onContextMenuCommand)
+    window.electronAPI.onContextMenuCommand((cmd, data) => {
+      if (cmd === "remove-tracks") removeTracks(data);
     });
-  }
-  if (
-    window.electronAPI &&
-    typeof window.electronAPI.onSetInitialPlaylistVisibility === "function"
-  ) {
-    window.electronAPI.onSetInitialPlaylistVisibility((isVisible) =>
-      setPlaylistUIVisibilityDOM(isVisible)
+  if (window.electronAPI?.onSetInitialPlaylistVisibility)
+    window.electronAPI.onSetInitialPlaylistVisibility((vis) =>
+      setPlaylistUIVisibilityDOM(vis)
     );
-  }
-  if (
-    window.electronAPI &&
-    typeof window.electronAPI.onSetInitialVolume === "function"
-  ) {
-    window.electronAPI.onSetInitialVolume((initialVolume) => {
-      if (audioPlayer && typeof initialVolume === "number")
-        audioPlayer.volume = initialVolume;
-      if (volumeSlider && typeof initialVolume === "number")
-        volumeSlider.value = initialVolume.toString();
+  if (window.electronAPI?.onSetInitialVolume)
+    window.electronAPI.onSetInitialVolume((vol) => {
+      if (audioPlayer && typeof vol === "number") audioPlayer.volume = vol;
+      if (volumeSlider && typeof vol === "number")
+        volumeSlider.value = vol.toString();
+      updateVolumeSliderFill();
+      updateVolumeIcon();
     });
-  }
-  if (
-    window.electronAPI &&
-    typeof window.electronAPI.onOpenFileInPlayer === "function"
-  ) {
+  if (window.electronAPI?.onOpenFileInPlayer) {
     window.electronAPI.onOpenFileInPlayer(async (filePath) => {
       if (filePath && typeof filePath === "string") {
-        const trackExistsIndex = playlist.findIndex(
-          (track) => track.path === filePath
-        );
-        if (trackExistsIndex !== -1) {
+        const trackExistsIdx = playlist.findIndex((t) => t.path === filePath);
+        if (trackExistsIdx !== -1) {
           isPlayerExplicitlyStopped = false;
-          playTrack(trackExistsIndex, "onOpenFileInPlayer_existing");
+          playTrack(trackExistsIdx, "ipc_existing");
         } else {
-          if (songNameDisplay && playlist.length === 0)
-            updateSongDisplay(`Loading: ${getFileName(filePath)}`);
           const name = getFileName(filePath);
-          const durationRaw = await getAudioDuration(filePath);
-          const durationFormatted =
-            durationRaw != null && !isNaN(durationRaw)
-              ? formatTime(durationRaw)
-              : "--:--";
+          if (playlist.length === 0)
+            updateTrackInfoDisplay(`Loading: ${name}`, "");
+          const meta = await fetchTrackMetadata(filePath);
+          const durRaw = await getAudioDuration(filePath);
+          const durFmt =
+            durRaw != null && !isNaN(durRaw) ? formatTime(durRaw) : "--:--";
           const newTrack = {
             path: filePath,
             name,
-            durationRaw,
-            durationFormatted,
+            title: meta.title,
+            artist: meta.artist,
+            album: meta.album,
+            durationRaw: durRaw,
+            durationFormatted: durFmt,
           };
           playlist.push(newTrack);
           renderPlaylist();
-          const newTrackIndex = playlist.length - 1;
+          const newIdx = playlist.length - 1;
           isPlayerExplicitlyStopped = false;
-          playTrack(newTrackIndex, "onOpenFileInPlayer_new");
+          playTrack(newIdx, "ipc_new");
         }
       }
     });
-  } else {
-    console.warn(
-      "Renderer: window.electronAPI.onOpenFileInPlayer not available."
-    );
-  }
+  } else console.warn("File open IPC missing.");
+
+  // --- Select All (Ctrl+A / Cmd+A) for Playlist ---
+  document.addEventListener("keydown", (event) => {
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      (event.key === "a" || event.key === "A")
+    ) {
+      // Check if the playlist is visible and has items, and the event isn't from an input field (though none exist here that would conflict)
+      if (
+        playlistContainer &&
+        !playlistContainer.classList.contains("hidden") &&
+        playlist.length > 0
+      ) {
+        // Check if the event target is within the playlist or the body (if nothing specific is focused)
+        // This ensures Ctrl+A doesn't get hijacked if, for example, devtools input is focused.
+        // For simplicity here, we assume if playlist is visible, Ctrl+A is for it.
+        // A more robust check might involve document.activeElement.
+        let canSelectAll = false;
+        if (
+          document.activeElement === document.body ||
+          playlistUL.contains(document.activeElement)
+        ) {
+          canSelectAll = true;
+        } else {
+          // If devtools is focused, activeElement might be body, but target specific to devtools
+          if (
+            (event.target &&
+              event.target.closest &&
+              event.target.closest(".playlist-area")) ||
+            event.target === document.body
+          ) {
+            canSelectAll = true;
+          }
+        }
+
+        if (canSelectAll) {
+          event.preventDefault(); // Prevent default browser text selection
+
+          selectedIndices = [];
+          for (let i = 0; i < playlist.length; i++) {
+            selectedIndices.push(i);
+          }
+
+          if (playlist.length > 0) {
+            // If nothing was "current", make the first item current. Otherwise, keep existing current.
+            if (currentTrackIndex === -1) {
+              currentTrackIndex = 0;
+            }
+            lastClickedIndex = 0; // For subsequent shift-click consistency
+          } else {
+            currentTrackIndex = -1;
+            lastClickedIndex = -1;
+          }
+          renderPlaylist();
+          console.log("Ctrl+A: All tracks selected in playlist.");
+        }
+      }
+    }
+  });
 
   // --- Initial Setup ---
   renderPlaylist();
@@ -1312,6 +1201,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     updateVolumeSliderFill();
     updateVolumeIcon();
-    updateSongDisplay(songNameDisplay.textContent || PLACEHOLDER_SONG_NAME);
+    updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
+    if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
+    if (durationDisplay) durationDisplay.textContent = formatTime(0);
+    if (seekBar) {
+      seekBar.value = 0;
+      seekBar.max = 0;
+    }
   }, 100);
+  console.log("Renderer: Script finished initialization.");
 });
