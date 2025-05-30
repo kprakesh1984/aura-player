@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Volume State Persistence
   saveVolume: (volume) => ipcRenderer.send("save-volume-state", volume),
+  // --- New function for metadata ---
+  getMetadata: (filePath) => ipcRenderer.invoke("get-audio-metadata", filePath),
   onSetInitialVolume: (callback) =>
     ipcRenderer.on("set-initial-volume", (_event, volume) => callback(volume)),
 

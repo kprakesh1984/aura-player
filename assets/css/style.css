@@ -1,4 +1,8 @@
 /* Global Font and Body Styles */
+* {
+  box-sizing: border-box;
+}
+
 html,
 body {
   height: 100%;
@@ -19,7 +23,6 @@ body {
 
 /* Player Container */
 .player-container {
-  padding-top: 5%;
   width: 100%;
   height: 100%;
   display: flex;
@@ -30,46 +33,58 @@ body {
 
 /* Main Player Panel */
 .main-player {
-  padding: 15px 20px;
+  /* Original: padding: 15px 20px; */
+  padding: 25px 20px 15px 20px; /* MODIFIED: Increased top padding to 25px (was 15px) */
+  /* Horizontal padding 20px, bottom padding 15px */
   flex-shrink: 0;
 }
 
-/* Track Info Display */
+/* --- MODIFIED Track Info Display --- */
 .track-info {
-  margin-bottom: 10px;
-  font-size: 0.85em;
-  color: #bbb;
+  margin-bottom: 10px; /* Space below track info, before seek bar */
   display: flex;
   align-items: center;
+  justify-content: center;
   width: 100%;
-  height: 2.2em;
-  line-height: 2.2em;
+  min-height: 3em;
   overflow: hidden;
 }
-.track-info > span:first-child {
-  display: none;
+
+.now-playing-details {
+  min-width: 0;
+  flex-grow: 1;
+  max-width: calc(100% - 70px - 20px);
+  overflow: hidden;
+  text-align: center;
+  border-radius: 15px;
+  padding: 5px 10px;
+  background-color: #2c2c2c;
+  border: 1px solid #404040;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
-.song-name-container {
-  min-width: 0;
+.song-title-container,
+.song-artist-container {
+  width: 100%;
   overflow: hidden;
   white-space: nowrap;
   text-align: center;
-  line-height: inherit;
-  border-radius: 15px;
-  padding: 0 10px;
-  background-color: #2c2c2c;
-  border: 1px solid #404040;
-  margin-left: calc(35px + 10px);
-  margin-right: calc(35px + 10px);
-  flex-grow: 1;
 }
-.song-name-container.placeholder-text #songName {
+
+.now-playing-details.placeholder-text #songTitle,
+.now-playing-details.placeholder-text #songArtist {
   color: #00aeff;
   font-weight: normal;
   text-shadow: none;
 }
-#songName {
+.now-playing-details.placeholder-text #songArtist {
+  color: #777;
+}
+
+#songTitle {
+  font-size: 0.9em;
   font-weight: 700;
   color: #00aeff;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
@@ -79,19 +94,36 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: middle;
-  line-height: normal;
+  line-height: 1.4;
 }
-#songName.scrolling-active {
+
+#songArtist {
+  font-size: 0.75em;
+  color: #bbb;
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+  line-height: 1.3;
+  margin-top: 2px;
+}
+
+#songTitle.scrolling-active,
+#songArtist.scrolling-active {
   max-width: none;
   text-overflow: clip;
   overflow: visible;
   transform: translateX(100%);
   animation: continuous-scroll-text 10s linear infinite;
   text-align: left !important;
+  padding-left: 100%;
 }
+
 @keyframes continuous-scroll-text {
   0% {
-    transform: translateX(100%);
+    transform: translateX(0%);
   }
   100% {
     transform: translateX(-100%);
@@ -219,9 +251,6 @@ body {
     0 1px 2px rgba(0, 0, 0, 0.3);
   transform: none;
 }
-/* Add .repeat-one-active and .repeat-all-active if/when you re-implement those features */
-/* .playback-controls button#shuffleBtn.repeat-one-active { ... } */
-/* .playback-controls button#shuffleBtn.repeat-all-active { ... } */
 
 /* --- Volume Controls --- */
 .volume-controls {
@@ -327,6 +356,10 @@ body {
   height: auto;
   border-radius: 4px;
 }
+.playlist-header .close-playlist-btn:hover {
+  color: #00aeff;
+  background-color: rgba(255, 255, 255, 0.1);
+}
 
 /* Playlist Styles */
 .playlist-container {
@@ -335,7 +368,7 @@ body {
   display: flex;
   flex-direction: column;
   margin-top: 20px;
-  margin-bottom: 30px;
+  margin-bottom: 30px; /* Or remove if window height is exact */
 }
 .playlist-container.hidden {
   display: none;
@@ -367,21 +400,19 @@ body {
 .playlist-area {
   list-style: none;
   padding: 0;
+  padding-bottom: 8px; /* MODIFIED: Added bottom padding for scroll end */
   margin: 0;
   overflow-y: auto;
   background-color: #2c3e50;
   border-radius: 0 0 0 0;
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.2);
+  flex-grow: 1;
 }
 .playlist-area li {
-  padding-bottom: 7px;
-  padding-left: 10px;
-  padding-top: 7px;
-  padding-right: 10px;
-  /* Adjusted padding */
+  padding: 7px 10px;
   border-bottom: 2px solid #303030;
   cursor: pointer;
-  font-size: 0.8em; /* << REDUCED FONT SIZE FOR PLAYLIST ITEMS */
+  font-size: 0.8em;
   font-weight: 100;
   display: flex;
   justify-content: space-between;
@@ -441,9 +472,8 @@ body {
   text-align: right;
 }
 
-/* Styling for the LI that acts as a drop target when playlist is empty */
 .playlist-area li.playlist-drop-target {
-  display: flex; /* For centering text if any */
+  display: flex;
   justify-content: center;
   align-items: center;
   padding: 30px 15px !important;
@@ -459,9 +489,8 @@ body {
   cursor: default !important;
   border-bottom: none !important;
 }
-.playlist-area li.playlist-drop-target.dragover, /* From general dragover on li */
-    .playlist-drop-target.dragover-active-direct {
-  /* From specific JS class */
+.playlist-area li.playlist-drop-target.dragover,
+.playlist-drop-target.dragover-active-direct {
   background-color: #404040 !important;
   border-color: #00aeff !important;
   color: #00aeff !important;
@@ -474,7 +503,15 @@ body {
 }
 .playlist-container.dragover-active .playlist-area {
   box-shadow: inset 0 0 0 2px #00aeff;
-} /* Keeps existing inset border when active */
+}
+.playlist-area li.drop-target-above {
+  border-top: 2px solid #00aeff !important;
+  border-bottom: 2px solid #303030 !important; /* Reset normal bottom */
+}
+.playlist-area li.drop-target-below {
+  border-bottom: 2px solid #00aeff !important;
+}
+
 .playlist-area::-webkit-scrollbar {
   width: 8px;
 }

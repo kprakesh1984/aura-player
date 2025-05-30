@@ -12,7 +12,8 @@
     "dist:win": "electron-builder --win --x64"
   },
   "dependencies": {
-    "electron-store": "^7.0.3"
+    "electron-store": "^7.0.3",
+    "music-metadata": "^11.2.3"
   },
   "devDependencies": {
     "electron": "^28.3.3",
