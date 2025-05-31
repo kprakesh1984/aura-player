@@ -33,20 +33,19 @@ body {
 
 /* Main Player Panel */
 .main-player {
-  /* Original: padding: 15px 20px; */
-  padding: 25px 20px 15px 20px; /* MODIFIED: Increased top padding to 25px (was 15px) */
-  /* Horizontal padding 20px, bottom padding 15px */
+  padding: 25px 20px 15px 20px; /* Top padding was increased */
   flex-shrink: 0;
 }
 
 /* --- MODIFIED Track Info Display --- */
 .track-info {
-  margin-bottom: 10px; /* Space below track info, before seek bar */
+  margin-bottom: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 3em;
+  /* min-height: 3em; */ /* REMOVED this */
+  height: 50px; /* MODIFIED: Added fixed height. Adjust as needed (e.g., 50px, 52px) */
   overflow: hidden;
 }
 
@@ -54,6 +53,7 @@ body {
   min-width: 0;
   flex-grow: 1;
   max-width: calc(100% - 70px - 20px);
+  height: 100%; /* MODIFIED: Make this fill the parent .track-info's fixed height */
   overflow: hidden;
   text-align: center;
   border-radius: 15px;
@@ -368,7 +368,7 @@ body {
   display: flex;
   flex-direction: column;
   margin-top: 20px;
-  margin-bottom: 30px; /* Or remove if window height is exact */
+  margin-bottom: 30px;
 }
 .playlist-container.hidden {
   display: none;
@@ -400,7 +400,7 @@ body {
 .playlist-area {
   list-style: none;
   padding: 0;
-  padding-bottom: 8px; /* MODIFIED: Added bottom padding for scroll end */
+  padding-bottom: 15px;
   margin: 0;
   overflow-y: auto;
   background-color: #2c3e50;
@@ -506,7 +506,7 @@ body {
 }
 .playlist-area li.drop-target-above {
   border-top: 2px solid #00aeff !important;
-  border-bottom: 2px solid #303030 !important; /* Reset normal bottom */
+  border-bottom: 2px solid #303030 !important;
 }
 .playlist-area li.drop-target-below {
   border-bottom: 2px solid #00aeff !important;

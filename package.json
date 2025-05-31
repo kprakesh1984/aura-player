@@ -1,6 +1,6 @@
 {
   "name": "symphonie",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A simple music player built with Electron.",
   "main": "main.js",
   "author": "Rakesh KP",
@@ -25,6 +25,7 @@
     "executableName": "Symphonie",
     "copyright": "Copyright © ${new Date().getFullYear()} Rakesh KP",
     "asar": true,
+    "compression": "maximum",
     "directories": {
       "output": "dist_electron",
       "buildResources": "assets/icons"
@@ -97,21 +98,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         },
         {
           "target": "msi",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         },
         {
           "target": "portable",
-          "arch": [
-            "x64"
-          ]
+          "arch": ["x64"]
         }
       ],
       "requestedExecutionLevel": "asInvoker"
@@ -127,7 +122,6 @@
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico",
       "uninstallDisplayName": "${productName} Uninstaller",
-      "unzip": false,
       "differentialPackage": true
     },
     "msi": {
@@ -135,26 +129,18 @@
       "perMachine": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "compression": "maximum",
       "shortcutName": "Symphonie",
       "upgradeCode": "{10b1cbe9-7301-4cd8-8810-aa5d12db39ca}"
     },
     "mac": {
       "icon": "icon.icns",
       "category": "public.app-category.music",
-      "target": [
-        "dmg",
-        "zip"
-      ]
+      "target": ["dmg", "zip"]
     },
     "linux": {
       "icon": ".",
       "category": "Audio;Audio;",
-      "target": [
-        "AppImage",
-        "deb",
-        "rpm"
-      ]
+      "target": ["AppImage", "deb", "rpm"]
     }
   }
 }
