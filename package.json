@@ -127,7 +127,7 @@
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico",
       "uninstallDisplayName": "${productName} Uninstaller",
-      "compression": "maximum",
+      "unzip": false,
       "differentialPackage": true
     },
     "msi": {
