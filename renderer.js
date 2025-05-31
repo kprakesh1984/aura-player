@@ -82,9 +82,16 @@ document.addEventListener("DOMContentLoaded", () => {
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   }
 
-  function getFileName(filePath) {
+  function getFileName(filePath, includeExtension = false) {
     if (!filePath) return "Unknown Song";
-    return filePath.split(/[\\/]/).pop() || "Unknown Song";
+    const fullFileName = filePath.split(/[\\/]/).pop() || "Unknown Song";
+    if (includeExtension) {
+      return fullFileName;
+    } else {
+      const lastDot = fullFileName.lastIndexOf(".");
+      if (lastDot === -1 || lastDot === 0) return fullFileName;
+      return fullFileName.substring(0, lastDot);
+    }
   }
 
   function updateVolumeSliderFill() {
@@ -149,6 +156,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   async function fetchTrackMetadata(filePath) {
+    const nameWithoutExtension = getFileName(filePath, false);
     if (
       window.electronAPI &&
       typeof window.electronAPI.getMetadata === "function"
@@ -157,7 +165,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const metadata = await window.electronAPI.getMetadata(filePath);
         if (metadata)
           return {
-            title: metadata.title || getFileName(filePath),
+            title: metadata.title || nameWithoutExtension,
             artist: metadata.artist || "",
             album: metadata.album || "",
           };
@@ -168,7 +176,7 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       }
     }
-    return { title: getFileName(filePath), artist: "", album: "" };
+    return { title: nameWithoutExtension, artist: "", album: "" };
   }
 
   function checkAndApplyScrolling(textElement, containerElement) {
@@ -310,7 +318,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const errName =
         cpiErr?.title ||
         cpiErr?.name ||
-        (errSrc ? getFileName(errSrc) : "track");
+        (errSrc ? getFileName(errSrc, true) : "track");
       updateTrackInfoDisplay(`Error: (${errName})`, "Could not play file");
       if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
       if (durationDisplay) durationDisplay.textContent = formatTime(0);
@@ -448,8 +456,8 @@ document.addEventListener("DOMContentLoaded", () => {
       li.dataset.index = index;
       const tNS = document.createElement("span");
       tNS.className = "track-name-span";
-      tNS.textContent = track.name;
-      tNS.title = track.name;
+      tNS.textContent = `${index + 1}. ${track.name}`; // Number + Name (w/o ext)
+      tNS.title = getFileName(track.path, true); // Tooltip with full filename
       li.appendChild(tNS);
       const dS = document.createElement("span");
       dS.className = "track-duration-span";
@@ -547,7 +555,7 @@ document.addEventListener("DOMContentLoaded", () => {
     for (let i = 0; i < filePaths.length; i++) {
       const p = filePaths[i];
       if (existing.has(p)) continue;
-      const n = getFileName(p);
+      const n = getFileName(p, false);
       if (filePaths.length > 1)
         updateTrackInfoDisplay(
           `Loading: ${n}`,
@@ -596,7 +604,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (currentlyPlayingInfo)
       updateTrackInfoDisplay(
-        currentlyPlayingInfo.title,
+        currentlyPlayingInfo.title || currentlyPlayingInfo.name,
         currentlyPlayingInfo.artist
       );
     else if (
@@ -606,7 +614,7 @@ document.addEventListener("DOMContentLoaded", () => {
       playlist[firstNew]
     ) {
       const fT = playlist[firstNew];
-      updateTrackInfoDisplay(fT.title, fT.artist);
+      updateTrackInfoDisplay(fT.title || fT.name, fT.artist);
     } else if (oTitle !== "Loading songs...")
       updateTrackInfoDisplay(oTitle, oArtist);
     else updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
@@ -634,7 +642,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (needsNew) {
           audioPlayer.src = track.path;
           currentlyPlayingInfo = { ...track };
-          updateTrackInfoDisplay(track.title, track.artist);
+          updateTrackInfoDisplay(track.title || track.name, track.artist);
           if (currentTimeDisplay)
             currentTimeDisplay.textContent = formatTime(0);
           if (durationDisplay) durationDisplay.textContent = formatTime(0);
@@ -658,7 +666,7 @@ document.addEventListener("DOMContentLoaded", () => {
             });
           else isPlayerExplicitlyStopped = true;
         } else {
-          updateTrackInfoDisplay(track.title, track.artist);
+          updateTrackInfoDisplay(track.title || track.name, track.artist);
           if (audioPlayer.paused)
             audioPlayer.play().catch((e) => (isPlayerExplicitlyStopped = true));
         }
@@ -752,19 +760,23 @@ document.addEventListener("DOMContentLoaded", () => {
       playlist[currentTrackIndex]
     ) {
       const curD = playlist[currentTrackIndex];
-      updateTrackInfoDisplay(curD.title, curD.artist);
+      updateTrackInfoDisplay(curD.title || curD.name, curD.artist);
     } else if (!currentlyPlayingInfo)
       updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
     renderPlaylist();
   }
   function playNextTrackLogic() {
-    if (playlist.length === 0) return;
+    if (playlist.length === 0) {
+      /* Reset player state */ return;
+    }
     let newIdx = currentTrackIndex + 1;
     if (newIdx >= playlist.length) newIdx = 0;
     playTrack(newIdx, "nextLogic");
   }
   function playPrevTrackLogic() {
-    if (playlist.length === 0) return;
+    if (playlist.length === 0) {
+      /* Reset player state */ return;
+    }
     let newIdx = currentTrackIndex - 1;
     if (newIdx < 0) newIdx = playlist.length - 1;
     playTrack(newIdx, "prevLogic");
@@ -1096,7 +1108,7 @@ document.addEventListener("DOMContentLoaded", () => {
           isPlayerExplicitlyStopped = false;
           playTrack(trackExistsIdx, "ipc_existing");
         } else {
-          const name = getFileName(filePath);
+          const name = getFileName(filePath, false);
           if (playlist.length === 0)
             updateTrackInfoDisplay(`Loading: ${name}`, "");
           const meta = await fetchTrackMetadata(filePath);
@@ -1128,52 +1140,42 @@ document.addEventListener("DOMContentLoaded", () => {
       (event.ctrlKey || event.metaKey) &&
       (event.key === "a" || event.key === "A")
     ) {
-      // Check if the playlist is visible and has items, and the event isn't from an input field (though none exist here that would conflict)
       if (
         playlistContainer &&
         !playlistContainer.classList.contains("hidden") &&
         playlist.length > 0
       ) {
-        // Check if the event target is within the playlist or the body (if nothing specific is focused)
-        // This ensures Ctrl+A doesn't get hijacked if, for example, devtools input is focused.
-        // For simplicity here, we assume if playlist is visible, Ctrl+A is for it.
-        // A more robust check might involve document.activeElement.
         let canSelectAll = false;
         if (
           document.activeElement === document.body ||
-          playlistUL.contains(document.activeElement)
+          playlistUL.contains(document.activeElement) ||
+          mainPlayerPanel.contains(document.activeElement)
         ) {
           canSelectAll = true;
-        } else {
-          // If devtools is focused, activeElement might be body, but target specific to devtools
+        }
+        if (
+          document.activeElement &&
+          (document.activeElement.tagName === "INPUT" ||
+            document.activeElement.tagName === "TEXTAREA")
+        ) {
           if (
-            (event.target &&
-              event.target.closest &&
-              event.target.closest(".playlist-area")) ||
-            event.target === document.body
+            !playlistUL.contains(document.activeElement) &&
+            !mainPlayerPanel.contains(document.activeElement)
           ) {
-            canSelectAll = true;
+            // If focused input is NOT in playlist or main player
+            canSelectAll = false;
           }
         }
 
         if (canSelectAll) {
-          event.preventDefault(); // Prevent default browser text selection
-
-          selectedIndices = [];
-          for (let i = 0; i < playlist.length; i++) {
-            selectedIndices.push(i);
-          }
-
-          if (playlist.length > 0) {
-            // If nothing was "current", make the first item current. Otherwise, keep existing current.
-            if (currentTrackIndex === -1) {
-              currentTrackIndex = 0;
-            }
-            lastClickedIndex = 0; // For subsequent shift-click consistency
-          } else {
-            currentTrackIndex = -1;
-            lastClickedIndex = -1;
-          }
+          event.preventDefault();
+          selectedIndices = Array.from(
+            { length: playlist.length },
+            (_, i) => i
+          );
+          if (playlist.length > 0 && currentTrackIndex === -1)
+            currentTrackIndex = 0;
+          lastClickedIndex = currentTrackIndex !== -1 ? currentTrackIndex : 0;
           renderPlaylist();
           console.log("Ctrl+A: All tracks selected in playlist.");
         }
