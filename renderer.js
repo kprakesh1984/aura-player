@@ -30,34 +30,31 @@ document.addEventListener("DOMContentLoaded", () => {
   const closePlaylistPanelBtn = document.getElementById(
     "closePlaylistPanelBtn"
   );
+  const visualizerCanvas = document.getElementById("audioVisualizerCanvas");
+  let canvasCtx;
+  // const eqToggleBtn = document.getElementById("eqToggleBtn"); // REMOVED
+  // const eqIndicator = document.getElementById("eqIndicator"); // REMOVED
+  const vizToggleBtn = document.getElementById("vizToggleBtn");
 
+  // Critical check
   if (
     !audioPlayer ||
-    !songTitleDisplay ||
-    !songArtistDisplay ||
-    !nowPlayingDetailsContainer ||
     !mainPlayerPanel ||
     !playPauseBtn ||
-    !prevBtn ||
-    !nextBtn ||
-    !stopBtn ||
-    !shuffleBtn ||
-    !fastForwardBtn ||
-    !seekBar ||
-    !currentTimeDisplay ||
-    !durationDisplay ||
-    !volumeIcon ||
-    !volumeSlider ||
-    !addFilesBtn ||
-    !playlistContainer ||
     !playlistUL ||
-    !playlistToggleBtn ||
-    !closePlaylistPanelBtn
+    !visualizerCanvas
   ) {
     console.error(
-      "CRITICAL ERROR: One or more essential DOM elements not found."
+      "CRITICAL ERROR: Core DOM elements missing, player cannot function."
     );
+    if (mainPlayerPanel)
+      mainPlayerPanel.innerHTML =
+        "<p style='color:red; text-align:center; padding:20px;'>Player Error: Essential components missing.</p>";
+    return;
   }
+  if (!songTitleDisplay)
+    console.warn("Warning: songTitleDisplay element not found.");
+  if (!vizToggleBtn) console.warn("Warning: vizToggleBtn element not found.");
 
   // State Variables
   let playlist = [];
@@ -73,34 +70,38 @@ document.addEventListener("DOMContentLoaded", () => {
   let draggedItemIndex = null;
   let dropTargetIndex = null;
   const PLAYER_FIXED_WIDTH = 380;
+  // let isEqActive = false; // REMOVED
+  let isVisualizerActive = true;
 
-  // --- Helper Functions ---
+  // Web Audio API variables
+  let audioContext;
+  let analyser;
+  let sourceNode;
+  let visualizerDataArray;
+  let visualizerBufferLength;
+  let visualizerAnimationId;
+
+  // --- Helper Functions --- (Same as before)
   function formatTime(seconds) {
     if (isNaN(seconds) || seconds < 0) seconds = 0;
     const m = Math.floor(seconds / 60);
     const s = Math.floor(seconds % 60);
     return `${m}:${s < 10 ? "0" : ""}${s}`;
   }
-
   function getFileName(filePath, includeExtension = false) {
     if (!filePath) return "Unknown Song";
     const fullFileName = filePath.split(/[\\/]/).pop() || "Unknown Song";
-    if (includeExtension) {
-      return fullFileName;
-    } else {
-      const lastDot = fullFileName.lastIndexOf(".");
-      if (lastDot === -1 || lastDot === 0) return fullFileName;
-      return fullFileName.substring(0, lastDot);
-    }
+    if (includeExtension) return fullFileName;
+    const lastDot = fullFileName.lastIndexOf(".");
+    if (lastDot === -1 || lastDot === 0) return fullFileName;
+    return fullFileName.substring(0, lastDot);
   }
-
   function updateVolumeSliderFill() {
     if (volumeSlider && audioPlayer) {
       const p = audioPlayer.muted ? 0 : audioPlayer.volume * 100;
       volumeSlider.style.setProperty("--volume-percent", `${p}%`);
     }
   }
-
   function updateVolumeIcon() {
     if (!volumeIcon || !audioPlayer) return;
     volumeIcon.classList.remove(
@@ -123,19 +124,29 @@ document.addEventListener("DOMContentLoaded", () => {
       volumeIcon.title = "Mute";
     }
   }
-
   async function getAudioDuration(filePath) {
+    const filename = getFileName(filePath, true);
+    console.warn(
+      `Renderer: Using SLOW getAudioDuration fallback for ${filename}`
+    );
+    const fallbackStartTime = performance.now();
     return new Promise((resolve) => {
       const tempAudio = new Audio();
       tempAudio.preload = "metadata";
       tempAudio.src = filePath;
       let resolved = false;
-      const resolveWithNull = () => {
+      const resolveWithNull = (reason = "unknown") => {
         if (!resolved) {
           resolved = true;
           tempAudio.onerror = null;
           tempAudio.onloadedmetadata = null;
           tempAudio.src = "";
+          const fallbackEndTime = performance.now();
+          console.error(
+            `getAudioDuration fallback for ${filename} failed in ${(
+              fallbackEndTime - fallbackStartTime
+            ).toFixed(2)}ms. Reason: ${reason}`
+          );
           resolve(null);
         }
       };
@@ -145,30 +156,38 @@ document.addEventListener("DOMContentLoaded", () => {
           tempAudio.onerror = null;
           const d = tempAudio.duration;
           tempAudio.src = "";
+          const fallbackEndTime = performance.now();
+          console.log(
+            `getAudioDuration fallback for ${filename} took ${(
+              fallbackEndTime - fallbackStartTime
+            ).toFixed(2)}ms. Found: ${d}`
+          );
           resolve(isNaN(d) ? null : d);
         }
       };
-      tempAudio.onerror = () => resolveWithNull();
+      tempAudio.onerror = (e) =>
+        resolveWithNull(`audio_element_error: ${e.target.error?.message}`);
       setTimeout(() => {
-        if (!resolved) resolveWithNull();
+        if (!resolved) resolveWithNull("timeout");
       }, 7000);
     });
   }
-
   async function fetchTrackMetadata(filePath) {
-    const nameWithoutExtension = getFileName(filePath, false);
+    const nameWithoutExt = getFileName(filePath, false);
     if (
       window.electronAPI &&
       typeof window.electronAPI.getMetadata === "function"
     ) {
       try {
-        const metadata = await window.electronAPI.getMetadata(filePath);
-        if (metadata)
+        const metadataFromMain = await window.electronAPI.getMetadata(filePath);
+        if (metadataFromMain) {
           return {
-            title: metadata.title || nameWithoutExtension,
-            artist: metadata.artist || "",
-            album: metadata.album || "",
+            title: metadataFromMain.title || nameWithoutExt,
+            artist: metadataFromMain.artist || "",
+            album: metadataFromMain.album || "",
+            duration: metadataFromMain.duration,
           };
+        }
       } catch (error) {
         console.error(
           `Renderer: Error fetching metadata for ${filePath} via electronAPI:`,
@@ -176,9 +195,8 @@ document.addEventListener("DOMContentLoaded", () => {
         );
       }
     }
-    return { title: nameWithoutExtension, artist: "", album: "" };
+    return { title: nameWithoutExt, artist: "", album: "", duration: null };
   }
-
   function checkAndApplyScrolling(textElement, containerElement) {
     if (!textElement || !containerElement) return;
     let timeoutId = parseInt(textElement.dataset.scrollTimeoutId, 10);
@@ -188,6 +206,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     textElement.classList.remove("scrolling-active");
     const isPlaceholderParent =
+      nowPlayingDetailsContainer &&
       nowPlayingDetailsContainer.classList.contains("placeholder-text");
     if (
       (isPlaceholderParent && textElement.textContent === PLACEHOLDER_TITLE) ||
@@ -209,6 +228,7 @@ document.addEventListener("DOMContentLoaded", () => {
       textElement.dataset.scrollTimeoutId = setTimeout(() => {
         if (
           textElement.scrollWidth > containerElement.clientWidth &&
+          nowPlayingDetailsContainer &&
           !nowPlayingDetailsContainer.classList.contains("placeholder-text")
         ) {
           textElement.style.textOverflow = "clip";
@@ -223,7 +243,6 @@ document.addEventListener("DOMContentLoaded", () => {
       textElement.style.textOverflow = "ellipsis";
     }
   }
-
   function updateTrackInfoDisplay(title, artist) {
     if (songTitleDisplay && songArtistDisplay && nowPlayingDetailsContainer) {
       const displayTitle = title || PLACEHOLDER_TITLE;
@@ -250,6 +269,136 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // --- Visualizer Functions ---
+  function setupVisualizer() {
+    if (!visualizerCanvas) {
+      console.warn(
+        "setupVisualizer: Canvas element not found, skipping visualizer."
+      );
+      return;
+    }
+    if (!canvasCtx) canvasCtx = visualizerCanvas.getContext("2d");
+    if (!audioContext) {
+      try {
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+      } catch (e) {
+        console.error("Web Audio API is not supported.", e);
+        return;
+      }
+    }
+    if (audioContext.state === "suspended") {
+      audioContext
+        .resume()
+        .catch((e) =>
+          console.error("Error resuming AudioContext on setup:", e)
+        );
+    }
+    if (!analyser) analyser = audioContext.createAnalyser();
+    if (!sourceNode || sourceNode.mediaElement !== audioPlayer) {
+      try {
+        if (sourceNode && typeof sourceNode.disconnect === "function")
+          sourceNode.disconnect();
+        sourceNode = audioContext.createMediaElementSource(audioPlayer);
+        sourceNode.connect(analyser);
+        analyser.connect(audioContext.destination);
+      } catch (e) {
+        console.error(
+          "Error creating/connecting MediaElementSource for visualizer:",
+          e
+        );
+        return;
+      }
+    }
+    analyser.fftSize = 256;
+    visualizerBufferLength = analyser.frequencyBinCount;
+    visualizerDataArray = new Uint8Array(visualizerBufferLength);
+    if (visualizerCanvas.clientWidth > 0 && visualizerCanvas.clientHeight > 0) {
+      visualizerCanvas.width = visualizerCanvas.clientWidth;
+      visualizerCanvas.height = visualizerCanvas.clientHeight;
+    } else {
+      visualizerCanvas.width = 300;
+      visualizerCanvas.height = 50;
+      console.warn("Visualizer canvas has no dimensions, defaulting.");
+    }
+    if (isVisualizerActive) {
+      if (visualizerAnimationId) cancelAnimationFrame(visualizerAnimationId);
+      drawVisualizer();
+    } else {
+      stopVisualizer();
+    }
+  }
+  function drawVisualizer() {
+    if (
+      !isVisualizerActive ||
+      !analyser ||
+      !canvasCtx ||
+      !visualizerDataArray
+    ) {
+      if (isVisualizerActive && !analyser && visualizerAnimationId) {
+        cancelAnimationFrame(visualizerAnimationId);
+        visualizerAnimationId = null;
+      } else if (isVisualizerActive && visualizerAnimationId) {
+        visualizerAnimationId = requestAnimationFrame(drawVisualizer);
+      }
+      return;
+    }
+    visualizerAnimationId = requestAnimationFrame(drawVisualizer);
+    analyser.getByteTimeDomainData(visualizerDataArray);
+    canvasCtx.fillStyle = "rgb(30, 30, 30)";
+    canvasCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+    canvasCtx.lineWidth = 2;
+    canvasCtx.strokeStyle = "rgb(0, 220, 100)";
+    canvasCtx.beginPath();
+    const sliceWidth = (visualizerCanvas.width * 1.0) / visualizerBufferLength;
+    let x = 0;
+    for (let i = 0; i < visualizerBufferLength; i++) {
+      const v = visualizerDataArray[i] / 128.0;
+      const y = (v * visualizerCanvas.height) / 2;
+      if (i === 0) canvasCtx.moveTo(x, y);
+      else canvasCtx.lineTo(x, y);
+      x += sliceWidth;
+    }
+    canvasCtx.lineTo(visualizerCanvas.width, visualizerCanvas.height / 2);
+    canvasCtx.stroke();
+  }
+  function stopVisualizer() {
+    if (visualizerAnimationId) {
+      cancelAnimationFrame(visualizerAnimationId);
+      visualizerAnimationId = null;
+    }
+    if (canvasCtx && visualizerCanvas) {
+      canvasCtx.fillStyle = "rgb(30, 30, 30)";
+      canvasCtx.fillRect(0, 0, visualizerCanvas.width, visualizerCanvas.height);
+    }
+  }
+  function toggleVisualizer() {
+    isVisualizerActive = !isVisualizerActive;
+    if (vizToggleBtn) {
+      vizToggleBtn.classList.toggle("active", isVisualizerActive);
+      vizToggleBtn.title = isVisualizerActive
+        ? "Turn Visualizer Off"
+        : "Turn Visualizer On";
+    }
+    if (isVisualizerActive) {
+      if (audioContext && !audioPlayer.paused) setupVisualizer();
+      else if (canvasCtx && visualizerCanvas) {
+        canvasCtx.fillStyle = "rgb(30, 30, 30)";
+        canvasCtx.fillRect(
+          0,
+          0,
+          visualizerCanvas.width,
+          visualizerCanvas.height
+        );
+      }
+    } else {
+      stopVisualizer();
+    }
+  }
+
+  // --- Equalizer Functions REMOVED ---
+  // function applyEqualizerSettings() { ... }
+  // function toggleEqualizer() { ... }
+
   // --- Audio Player Event Handlers ---
   if (audioPlayer) {
     audioPlayer.addEventListener("loadedmetadata", () => {
@@ -262,8 +411,7 @@ document.addEventListener("DOMContentLoaded", () => {
         durationDisplay.textContent = formatTime(audioPlayer.duration);
         seekBar.max = audioPlayer.duration;
         if (
-          currentlyPlayingInfo &&
-          currentlyPlayingInfo.path === audioPlayer.src &&
+          currentlyPlayingInfo?.path === audioPlayer.src &&
           (currentlyPlayingInfo.durationRaw == null ||
             isNaN(currentlyPlayingInfo.durationRaw))
         ) {
@@ -296,6 +444,18 @@ document.addEventListener("DOMContentLoaded", () => {
         isPlayerExplicitlyStopped = false;
       if (playPauseBtn) playPauseBtn.innerHTML = pauseIcon;
       renderPlaylist();
+      if (audioContext && audioContext.state === "suspended") {
+        audioContext
+          .resume()
+          .then(() => {
+            if (isVisualizerActive)
+              setupVisualizer(); /* if(isEqActive) applyEqualizerSettings(); REMOVED EQ */
+          })
+          .catch((e) => console.error("Error resuming AudioContext:", e));
+      } else {
+        if (isVisualizerActive)
+          setupVisualizer(); /* if(isEqActive) applyEqualizerSettings(); REMOVED EQ */
+      }
     });
     audioPlayer.addEventListener("pause", () => {
       if (playPauseBtn) playPauseBtn.innerHTML = playIcon;
@@ -304,6 +464,7 @@ document.addEventListener("DOMContentLoaded", () => {
     audioPlayer.addEventListener("ended", () => {
       isPlayerExplicitlyStopped = true;
       if (audioPlayer) audioPlayer.src = "";
+      if (isVisualizerActive) stopVisualizer();
       playNextTrackLogic();
     });
     audioPlayer.addEventListener("error", (e) => {
@@ -326,6 +487,7 @@ document.addEventListener("DOMContentLoaded", () => {
         seekBar.value = 0;
         seekBar.max = 0;
       }
+      if (isVisualizerActive) stopVisualizer();
       renderPlaylist();
     });
     audioPlayer.addEventListener("volumechange", () => {
@@ -393,6 +555,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
       if (playPauseBtn) playPauseBtn.innerHTML = playIcon;
       currentTrackIndex = -1;
+      if (isVisualizerActive) stopVisualizer();
       renderPlaylist();
     });
   }
@@ -435,6 +598,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     });
+  // REMOVED EQ Toggle Button Listener
+  // if (eqToggleBtn) eqToggleBtn.addEventListener("click", toggleEqualizer);
+  if (vizToggleBtn) vizToggleBtn.addEventListener("click", toggleVisualizer);
 
   // --- Playlist Logic Functions ---
   function renderPlaylist() {
@@ -456,8 +622,8 @@ document.addEventListener("DOMContentLoaded", () => {
       li.dataset.index = index;
       const tNS = document.createElement("span");
       tNS.className = "track-name-span";
-      tNS.textContent = `${index + 1}. ${track.name}`; // Number + Name (w/o ext)
-      tNS.title = getFileName(track.path, true); // Tooltip with full filename
+      tNS.textContent = `${index + 1}. ${track.name}`;
+      tNS.title = getFileName(track.path, true);
       li.appendChild(tNS);
       const dS = document.createElement("span");
       dS.className = "track-duration-span";
@@ -545,62 +711,80 @@ document.addEventListener("DOMContentLoaded", () => {
     insertAtIndex = -1
   ) {
     const oldLen = playlist.length;
-    let firstNew = -1;
-    let addedCount = 0;
-    const oTitle = songTitleDisplay?.textContent || PLACEHOLDER_TITLE;
-    const oArtist = songArtistDisplay?.textContent || PLACEHOLDER_ARTIST;
-    const existing = new Set(playlist.map((t) => t.path));
+    let firstNewIdxInPlaylist = -1;
+    let newTracksAddedCount = 0;
+    const originalDisplayTitle =
+      songTitleDisplay?.textContent || PLACEHOLDER_TITLE;
+    const originalDisplayArtist =
+      songArtistDisplay?.textContent || PLACEHOLDER_ARTIST;
+    const existingPathsInPlaylist = new Set(playlist.map((t) => t.path));
     updateTrackInfoDisplay("Loading songs...", "");
-    let tempNew = [];
+    let tempNewTracks = [];
     for (let i = 0; i < filePaths.length; i++) {
-      const p = filePaths[i];
-      if (existing.has(p)) continue;
-      const n = getFileName(p, false);
+      const path = filePaths[i];
+      if (existingPathsInPlaylist.has(path)) {
+        continue;
+      }
+      const name = getFileName(path, false);
       if (filePaths.length > 1)
         updateTrackInfoDisplay(
-          `Loading: ${n}`,
+          `Loading: ${name}`,
           `(${i + 1}/${filePaths.length})`
         );
-      const m = await fetchTrackMetadata(p);
-      const dR = await getAudioDuration(p);
-      const dF = dR != null && !isNaN(dR) ? formatTime(dR) : "--:--";
-      tempNew.push({
-        path: p,
-        name: n,
-        title: m.title,
-        artist: m.artist,
-        album: m.album,
-        durationRaw: dR,
-        durationFormatted: dF,
-      });
-      existing.add(p);
-      addedCount++;
+      const metadataFromIPC = await fetchTrackMetadata(path);
+      let durationRaw = metadataFromIPC.duration;
+      let durationFormatted = "--:--";
+      if (durationRaw == null || isNaN(durationRaw)) {
+        console.warn(
+          `Renderer: Duration for ${name} NOT VALID from IPC (value: ${durationRaw}). FALLING BACK to slow getAudioDuration.`
+        );
+        durationRaw = await getAudioDuration(path);
+      }
+      if (durationRaw != null && !isNaN(durationRaw)) {
+        durationFormatted = formatTime(durationRaw);
+      }
+      const newTrack = {
+        path,
+        name,
+        title: metadataFromIPC.title,
+        artist: metadataFromIPC.artist,
+        album: metadataFromIPC.album,
+        durationRaw,
+        durationFormatted,
+      };
+      tempNewTracks.push(newTrack);
+      existingPathsInPlaylist.add(path);
+      newTracksAddedCount++;
     }
-    if (addedCount > 0) {
-      let actualInsert;
+    if (newTracksAddedCount > 0) {
+      let actualInsertionPoint;
       if (insertAtIndex !== -1 && insertAtIndex <= playlist.length) {
-        playlist.splice(insertAtIndex, 0, ...tempNew);
-        actualInsert = insertAtIndex;
-        if (currentTrackIndex >= insertAtIndex) currentTrackIndex += addedCount;
+        playlist.splice(insertAtIndex, 0, ...tempNewTracks);
+        actualInsertionPoint = insertAtIndex;
+        if (currentTrackIndex >= insertAtIndex)
+          currentTrackIndex += newTracksAddedCount;
         selectedIndices = selectedIndices
-          .map((idx) => (idx >= insertAtIndex ? idx + addedCount : idx))
+          .map((idx) =>
+            idx >= insertAtIndex ? idx + newTracksAddedCount : idx
+          )
           .filter((idx) => idx < playlist.length);
         if (isShuffleActive && originalPlaylistOrder)
           originalPlaylistOrder.splice(
             insertAtIndex,
             0,
-            ...tempNew.map((t) => ({ ...t }))
+            ...tempNewTracks.map((t) => ({ ...t }))
           );
       } else {
-        playlist.push(...tempNew);
-        actualInsert = oldLen;
+        playlist.push(...tempNewTracks);
+        actualInsertionPoint = oldLen;
         if (isShuffleActive && originalPlaylistOrder)
-          tempNew.forEach((nt) => {
+          tempNewTracks.forEach((nt) => {
             if (!originalPlaylistOrder.some((ot) => ot.path === nt.path))
               originalPlaylistOrder.push({ ...nt });
           });
       }
-      if (firstNew === -1 && tempNew.length > 0) firstNew = actualInsert;
+      if (firstNewIdxInPlaylist === -1 && tempNewTracks.length > 0)
+        firstNewIdxInPlaylist = actualInsertionPoint;
     }
     if (currentlyPlayingInfo)
       updateTrackInfoDisplay(
@@ -608,19 +792,27 @@ document.addEventListener("DOMContentLoaded", () => {
         currentlyPlayingInfo.artist
       );
     else if (
-      addedCount > 0 &&
+      newTracksAddedCount > 0 &&
       (playFirstNew || oldLen === 0) &&
-      firstNew !== -1 &&
-      playlist[firstNew]
+      firstNewIdxInPlaylist !== -1 &&
+      playlist[firstNewIdxInPlaylist]
     ) {
-      const fT = playlist[firstNew];
-      updateTrackInfoDisplay(fT.title || fT.name, fT.artist);
-    } else if (oTitle !== "Loading songs...")
-      updateTrackInfoDisplay(oTitle, oArtist);
+      const firstTrack = playlist[firstNewIdxInPlaylist];
+      updateTrackInfoDisplay(
+        firstTrack.title || firstTrack.name,
+        firstTrack.artist
+      );
+    } else if (originalDisplayTitle !== "Loading songs...")
+      updateTrackInfoDisplay(originalDisplayTitle, originalDisplayArtist);
     else updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
     renderPlaylist();
-    if (addedCount > 0 && (playFirstNew || oldLen === 0) && firstNew !== -1)
-      playTrack(firstNew, "addFiles_playFirst");
+    if (
+      newTracksAddedCount > 0 &&
+      (playFirstNew || oldLen === 0) &&
+      firstNewIdxInPlaylist !== -1
+    ) {
+      playTrack(firstNewIdxInPlaylist, "addFilesToPlaylist_playFirstNew");
+    }
   }
   function playTrack(index, calledFrom = "unknown") {
     console.log(`DEBUG: playTrack - ${calledFrom} index: ${index}`);
@@ -652,7 +844,9 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           const pP = audioPlayer.play();
           if (pP)
-            pP.then(() => (isPlayerExplicitlyStopped = false)).catch((e) => {
+            pP.then(() => {
+              isPlayerExplicitlyStopped = false;
+            }).catch((e) => {
               updateTrackInfoDisplay(
                 `Error: (${track.title || track.name})`,
                 "Playback failed"
@@ -667,8 +861,9 @@ document.addEventListener("DOMContentLoaded", () => {
           else isPlayerExplicitlyStopped = true;
         } else {
           updateTrackInfoDisplay(track.title || track.name, track.artist);
-          if (audioPlayer.paused)
+          if (audioPlayer.paused) {
             audioPlayer.play().catch((e) => (isPlayerExplicitlyStopped = true));
+          }
         }
       } else {
         if (!currentlyPlayingInfo)
@@ -695,6 +890,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
         currentTrackIndex = -1;
         isPlayerExplicitlyStopped = true;
+        if (isVisualizerActive) stopVisualizer();
       }
     }
     renderPlaylist();
@@ -720,6 +916,7 @@ document.addEventListener("DOMContentLoaded", () => {
         audioPlayer.pause();
         audioPlayer.removeAttribute("src");
         audioPlayer.load();
+        if (isVisualizerActive) stopVisualizer();
       }
       currentlyPlayingInfo = null;
       updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
@@ -740,6 +937,7 @@ document.addEventListener("DOMContentLoaded", () => {
             audioPlayer.pause();
             audioPlayer.removeAttribute("src");
             audioPlayer.load();
+            if (isVisualizerActive) stopVisualizer();
           }
           currentlyPlayingInfo = null;
           updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
@@ -767,7 +965,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   function playNextTrackLogic() {
     if (playlist.length === 0) {
-      /* Reset player state */ return;
+      if (isVisualizerActive) stopVisualizer();
+      return;
     }
     let newIdx = currentTrackIndex + 1;
     if (newIdx >= playlist.length) newIdx = 0;
@@ -775,7 +974,8 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   function playPrevTrackLogic() {
     if (playlist.length === 0) {
-      /* Reset player state */ return;
+      if (isVisualizerActive) stopVisualizer();
+      return;
     }
     let newIdx = currentTrackIndex - 1;
     if (newIdx < 0) newIdx = playlist.length - 1;
@@ -1111,18 +1311,26 @@ document.addEventListener("DOMContentLoaded", () => {
           const name = getFileName(filePath, false);
           if (playlist.length === 0)
             updateTrackInfoDisplay(`Loading: ${name}`, "");
-          const meta = await fetchTrackMetadata(filePath);
-          const durRaw = await getAudioDuration(filePath);
-          const durFmt =
-            durRaw != null && !isNaN(durRaw) ? formatTime(durRaw) : "--:--";
+          const metadataFromIPC = await fetchTrackMetadata(filePath);
+          let durationRaw = metadataFromIPC.duration;
+          let durationFormatted = "--:--";
+          if (durationRaw == null || isNaN(durationRaw)) {
+            console.warn(
+              `Renderer: Duration for ${name} (IPC open) NOT VALID from IPC (${durationRaw}). FALLING BACK.`
+            );
+            durationRaw = await getAudioDuration(filePath);
+          }
+          if (durationRaw != null && !isNaN(durationRaw))
+            durationFormatted = formatTime(durationRaw);
+
           const newTrack = {
             path: filePath,
             name,
-            title: meta.title,
-            artist: meta.artist,
-            album: meta.album,
-            durationRaw: durRaw,
-            durationFormatted: durFmt,
+            title: metadataFromIPC.title,
+            artist: metadataFromIPC.artist,
+            album: metadataFromIPC.album,
+            durationRaw,
+            durationFormatted,
           };
           playlist.push(newTrack);
           renderPlaylist();
@@ -1145,29 +1353,22 @@ document.addEventListener("DOMContentLoaded", () => {
         !playlistContainer.classList.contains("hidden") &&
         playlist.length > 0
       ) {
-        let canSelectAll = false;
-        if (
-          document.activeElement === document.body ||
-          playlistUL.contains(document.activeElement) ||
-          mainPlayerPanel.contains(document.activeElement)
-        ) {
-          canSelectAll = true;
-        }
-        if (
-          document.activeElement &&
-          (document.activeElement.tagName === "INPUT" ||
-            document.activeElement.tagName === "TEXTAREA")
-        ) {
+        let targetIsSafeForSelectAll = true;
+        if (document.activeElement) {
+          const tagName = document.activeElement.tagName.toLowerCase();
           if (
-            !playlistUL.contains(document.activeElement) &&
-            !mainPlayerPanel.contains(document.activeElement)
+            (tagName === "input" ||
+              tagName === "textarea" ||
+              tagName === "select") &&
+            !(
+              playlistUL.contains(document.activeElement) ||
+              mainPlayerPanel.contains(document.activeElement)
+            )
           ) {
-            // If focused input is NOT in playlist or main player
-            canSelectAll = false;
+            targetIsSafeForSelectAll = false;
           }
         }
-
-        if (canSelectAll) {
+        if (targetIsSafeForSelectAll) {
           event.preventDefault();
           selectedIndices = Array.from(
             { length: playlist.length },
@@ -1177,7 +1378,6 @@ document.addEventListener("DOMContentLoaded", () => {
             currentTrackIndex = 0;
           lastClickedIndex = currentTrackIndex !== -1 ? currentTrackIndex : 0;
           renderPlaylist();
-          console.log("Ctrl+A: All tracks selected in playlist.");
         }
       }
     }
@@ -1187,6 +1387,15 @@ document.addEventListener("DOMContentLoaded", () => {
   renderPlaylist();
   updatePlaylistToggleBtnTextDOM();
   updateShuffleButtonUI();
+  // Initialize EQ button REMOVED
+  // if (eqToggleBtn && eqIndicator) { ... }
+  if (vizToggleBtn) {
+    // Initialize visualizer toggle button state
+    vizToggleBtn.classList.toggle("active", isVisualizerActive);
+    vizToggleBtn.title = isVisualizerActive
+      ? "Turn Visualizer Off"
+      : "Turn Visualizer On";
+  }
   setTimeout(() => {
     if (
       audioPlayer &&
@@ -1209,6 +1418,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (seekBar) {
       seekBar.value = 0;
       seekBar.max = 0;
+    }
+    if (visualizerCanvas) {
+      if (!canvasCtx) canvasCtx = visualizerCanvas.getContext("2d");
+      if (canvasCtx) {
+        if (
+          !isVisualizerActive ||
+          (audioPlayer && audioPlayer.paused && isPlayerExplicitlyStopped)
+        ) {
+          stopVisualizer();
+        }
+      }
     }
   }, 100);
   console.log("Renderer: Script finished initialization.");

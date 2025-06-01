@@ -2,28 +2,19 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <!-- Font Awesome for icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Google Font (Roboto example) -->
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
-    
-    <!-- Content Security Policy -->
     <meta http-equiv="Content-Security-Policy" 
-          content="default-src 'self'; 
-                   script-src 'self' 'unsafe-inline'; 
-                   style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; 
-                   font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com;">
-    
-    <title>Symphonie</title> <!-- Replace with your chosen player name -->
+          content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com;">
+    <title>Symphonie</title>
     <link rel="stylesheet" href="assets/css/style.css">
 </head>
 <body>
     <div class="player-container">
         <div class="main-player" id="mainPlayerPanel">
-            <!-- Track Info Section with structure for scrolling song name -->
-            <div class="track-info">
-                <!-- <span>Now Playing: </span> --> <!-- Static text part -->
-               <div class="now-playing-details">  <!-- Wrapper for song title and artist -->
+            <div class="track-info"> 
+                <div class="now-playing-details">
+                    <canvas id="audioVisualizerCanvas"></canvas>
                     <div class="song-title-container">
                         <span id="songTitle" title="No track loaded"></span>
                     </div>
@@ -33,17 +24,14 @@
                 </div>
             </div>
             
-            <!-- Seek Controls -->
             <div class="seek-controls">
                 <span id="currentTime">0:00</span>
                 <input type="range" id="seekBar" value="0" step="1">
                 <span id="duration">0:00</span>
             </div>
 
-            <!-- Audio Element -->
             <audio id="audioPlayer"></audio>
 
-            <!-- Playback Controls -->
             <div class="playback-controls">
                 <button id="prevBtn" title="Previous"><i class="fas fa-step-backward"></i></button>
                 <button id="playPauseBtn" title="Play/Pause"><i class="fas fa-play"></i></button>
@@ -51,35 +39,35 @@
                 <button id="stopBtn" title="Stop"><i class="fas fa-stop"></i></button>
                 <button id="shuffleBtn" title="Shuffle"><i class="fas fa-random"></i></button>
                 <button id="fastForwardBtn" title="Fast Forward 10s"><i class="fas fa-forward"></i></button>
+                
+                <div class="viz-toggle-container">
+                    <button id="vizToggleBtn" title="Toggle Visualizer">VI</button> 
+                </div>
             </div>
 
-            <!-- Volume Controls -->
+            <div class="visualizer-container"></div>
+
             <div class="volume-controls">
                 <i id="volumeIcon" class="fas fa-volume-up" title="Mute"></i> 
                 <input type="range" id="volumeSlider" min="0" max="1" step="0.01" value="1">
             </div>
 
-            <!-- File and Playlist Controls -->
             <div class="file-controls">
                 <button id="addFilesBtn"><i class="fas fa-plus"></i> Add Files</button>
                 <button id="playlistToggleBtn"><i class="fas fa-list-ul"></i> Show Playlist</button>
             </div>
         </div>
 
-        <!-- Docked Playlist Container -->
         <div id="playlistContainer" class="playlist-container hidden">
             <div class="playlist-header">
                 <h3>Playlist</h3>
                 <button class="close-playlist-btn" id="closePlaylistPanelBtn" title="Close Playlist Panel"><i class="fas fa-times"></i></button>
             </div>
             <ul id="playlist" class="playlist-area">
-                <!-- Default message when playlist is empty or loading -->
                 <li class="playlist-drop-target">Drag & drop audio files here or use "Add Files"</li>
             </ul>
         </div>
     </div>
-
-    <!-- Link to Renderer JavaScript -->
     <script src="./renderer.js"></script>
 </body>
 </html>
