@@ -10,8 +10,7 @@ body {
   overflow: hidden;
 }
 body {
-  font-family: "Rosemary", "Roboto", "Segoe UI", Tahoma, Geneva, Verdana,
-    sans-serif;
+  font-family: "Roboto", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background-color: #1e1e1e;
   color: #ddd;
   display: flex;
@@ -224,8 +223,7 @@ body {
 }
 
 .playback-controls button {
-  font-family: "Rosemary", "Roboto", "Segoe UI", Tahoma, Geneva, Verdana,
-    sans-serif;
+  font-family: "Roboto", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -381,7 +379,7 @@ body {
   margin-bottom: 10px;
 }
 .file-controls button {
-  font-family: "Rosemary", "Roboto", "Segoe UI", sans-serif;
+  font-family: "Roboto", "Segoe UI", sans-serif;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -483,7 +481,7 @@ body {
 .playlist-area {
   list-style: none;
   padding: 0;
-  padding-bottom: 15px;
+  padding-bottom: 5px;
   margin: 0;
   overflow-y: auto;
   background-color: #273849;
@@ -531,7 +529,7 @@ body {
 }
 .playlist-area li.playing-actual.selected,
 .playlist-area li.playing-actual.selected-ui {
-  background-color: #007bff !important;
+  background-color: #4a5568 !important;
   color: white !important;
 }
 .playlist-area li.playing-actual.selected .track-name-span,
