@@ -508,7 +508,6 @@ body {
   background-color: #4a5568;
 }
 .playlist-area li.playing-actual {
-  background-color: #007bff;
   color: white;
   font-weight: 500;
 }
