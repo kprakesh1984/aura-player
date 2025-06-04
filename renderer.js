@@ -32,11 +32,8 @@ document.addEventListener("DOMContentLoaded", () => {
   );
   const visualizerCanvas = document.getElementById("audioVisualizerCanvas");
   let canvasCtx;
-  // const eqToggleBtn = document.getElementById("eqToggleBtn"); // REMOVED
-  // const eqIndicator = document.getElementById("eqIndicator"); // REMOVED
   const vizToggleBtn = document.getElementById("vizToggleBtn");
 
-  // Critical check
   if (
     !audioPlayer ||
     !mainPlayerPanel ||
@@ -70,7 +67,6 @@ document.addEventListener("DOMContentLoaded", () => {
   let draggedItemIndex = null;
   let dropTargetIndex = null;
   const PLAYER_FIXED_WIDTH = 380;
-  // let isEqActive = false; // REMOVED
   let isVisualizerActive = true;
 
   // Web Audio API variables
@@ -81,7 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let visualizerBufferLength;
   let visualizerAnimationId;
 
-  // --- Helper Functions --- (Same as before)
+  // --- Helper Functions ---
   function formatTime(seconds) {
     if (isNaN(seconds) || seconds < 0) seconds = 0;
     const m = Math.floor(seconds / 60);
@@ -395,10 +391,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // --- Equalizer Functions REMOVED ---
-  // function applyEqualizerSettings() { ... }
-  // function toggleEqualizer() { ... }
-
   // --- Audio Player Event Handlers ---
   if (audioPlayer) {
     audioPlayer.addEventListener("loadedmetadata", () => {
@@ -448,13 +440,11 @@ document.addEventListener("DOMContentLoaded", () => {
         audioContext
           .resume()
           .then(() => {
-            if (isVisualizerActive)
-              setupVisualizer(); /* if(isEqActive) applyEqualizerSettings(); REMOVED EQ */
+            if (isVisualizerActive) setupVisualizer();
           })
           .catch((e) => console.error("Error resuming AudioContext:", e));
       } else {
-        if (isVisualizerActive)
-          setupVisualizer(); /* if(isEqActive) applyEqualizerSettings(); REMOVED EQ */
+        if (isVisualizerActive) setupVisualizer();
       }
     });
     audioPlayer.addEventListener("pause", () => {
@@ -598,8 +588,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
       }
     });
-  // REMOVED EQ Toggle Button Listener
-  // if (eqToggleBtn) eqToggleBtn.addEventListener("click", toggleEqualizer);
   if (vizToggleBtn) vizToggleBtn.addEventListener("click", toggleVisualizer);
 
   // --- Playlist Logic Functions ---
@@ -1088,7 +1076,113 @@ document.addEventListener("DOMContentLoaded", () => {
         toggleDockedPlaylistDOM();
     });
 
-  // --- DRAG AND DROP ---
+  // --- DRAG AND DROP (MODIFIED TO INCLUDE FOLDER HANDLING) ---
+
+  // Helper function to process dropped items (files or folders)
+  async function processDroppedItems(
+    dataTransferItems,
+    baseInsertAtIndex = -1
+  ) {
+    let filePathsToAdd = [];
+    const folderPromises = []; // To handle asynchronous folder reading
+
+    for (let i = 0; i < dataTransferItems.length; i++) {
+      const item = dataTransferItems[i];
+      if (item.kind === "file") {
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
+
+        if (entry) {
+          if (entry.isFile) {
+            const file = item.getAsFile();
+            if (
+              file &&
+              (file.type.startsWith("audio/") ||
+                /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(file.name))
+            ) {
+              if (file.path) filePathsToAdd.push(file.path); // file.path is available in Electron for local files
+            }
+          } else if (entry.isDirectory) {
+            console.log(
+              "Renderer: Directory dropped:",
+              entry.fullPath || entry.name
+            );
+            const fileRepresentationOfDirectory = item.getAsFile(); // This often holds the path in Electron
+            if (
+              fileRepresentationOfDirectory &&
+              fileRepresentationOfDirectory.path
+            ) {
+              if (
+                window.electronAPI &&
+                typeof window.electronAPI.getFilesFromDroppedFolder ===
+                  "function"
+              ) {
+                console.log(
+                  `Renderer: Requesting main process to read folder: ${fileRepresentationOfDirectory.path}`
+                );
+                folderPromises.push(
+                  window.electronAPI
+                    .getFilesFromDroppedFolder(
+                      fileRepresentationOfDirectory.path
+                    )
+                    .then((filesInFolder) => {
+                      if (filesInFolder && filesInFolder.length > 0) {
+                        console.log(
+                          `Renderer: Received ${filesInFolder.length} files from folder ${fileRepresentationOfDirectory.path}`
+                        );
+                        filePathsToAdd.push(...filesInFolder);
+                      }
+                    })
+                    .catch((err) =>
+                      console.error("Error getting files from folder IPC:", err)
+                    )
+                );
+              } else {
+                console.error(
+                  "electronAPI.getFilesFromDroppedFolder is not available. Ensure preload.js exposes it."
+                );
+              }
+            } else {
+              console.warn(
+                "Could not get path for dropped directory entry (item.getAsFile().path was null):",
+                entry.name
+              );
+            }
+          }
+        } else {
+          const file = item.getAsFile(); // Fallback for non-webkitGetAsEntry
+          if (
+            file &&
+            (file.type.startsWith("audio/") ||
+              /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(file.name))
+          ) {
+            if (file.path) {
+              filePathsToAdd.push(file.path);
+            }
+          }
+        }
+      }
+    }
+
+    if (folderPromises.length > 0) {
+      console.log(
+        `Renderer: Waiting for ${folderPromises.length} folder(s) to be read...`
+      );
+      await Promise.all(folderPromises);
+    }
+
+    console.log(
+      "Renderer: Total files to add after processing drop:",
+      filePathsToAdd.length
+    );
+    if (filePathsToAdd.length > 0) {
+      const playFirst = playlist.length === 0 && filePathsToAdd.length > 0;
+      // If baseInsertAtIndex is for playlist drop, use it, otherwise append (-1) for body drop.
+      const finalInsertAtIndex =
+        baseInsertAtIndex === -2 ? -1 : baseInsertAtIndex; // Use -2 as a special marker for body drop
+      await addFilesToPlaylist(filePathsToAdd, playFirst, finalInsertAtIndex);
+    }
+  }
+
   if (playlistUL) {
     playlistUL.addEventListener("dragenter", (e) => {
       e.preventDefault();
@@ -1165,7 +1259,9 @@ document.addEventListener("DOMContentLoaded", () => {
             "dragover-active-direct"
           )
         );
+
       if (draggedItemIndex !== null && dropTargetIndex !== null) {
+        // Internal reorder
         if (
           draggedItemIndex !== dropTargetIndex &&
           draggedItemIndex !== dropTargetIndex - 1
@@ -1200,34 +1296,24 @@ document.addEventListener("DOMContentLoaded", () => {
           renderPlaylist();
         }
       } else {
-        const files = e.dataTransfer.files;
-        if (files?.length) {
-          const audioP = Array.from(files)
-            .filter(
-              (f) =>
-                f.type.startsWith("audio/") ||
-                /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(f.name)
-            )
-            .map((f) => f.path);
-          if (audioP.length > 0) {
-            let insExtIdx = playlist.length;
-            const dLi = e.target.closest("li:not(.playlist-drop-target)");
-            if (dLi?.dataset.index !== undefined) {
-              const tI = parseInt(dLi.dataset.index, 10);
-              const r = dLi.getBoundingClientRect();
-              if (e.clientY < r.top + r.height / 2) insExtIdx = tI;
-              else insExtIdx = tI + 1;
-            } else if (
-              playlistUL.querySelector(".playlist-drop-target") &&
-              playlist.length === 0
-            )
-              insExtIdx = 0;
-            await addFilesToPlaylist(
-              audioP,
-              playlist.length === 0 && insExtIdx <= 0,
-              insExtIdx
-            );
+        // External file/folder drop
+        const items = e.dataTransfer.items;
+        if (items && items.length > 0) {
+          let insertAtIndexForExternal = playlist.length;
+          const dropOnLi = e.target.closest("li:not(.playlist-drop-target)");
+          if (dropOnLi && dropOnLi.dataset.index !== undefined) {
+            const targetIdx = parseInt(dropOnLi.dataset.index, 10);
+            const rect = dropOnLi.getBoundingClientRect();
+            if (e.clientY < rect.top + rect.height / 2)
+              insertAtIndexForExternal = targetIdx;
+            else insertAtIndexForExternal = targetIdx + 1;
+          } else if (
+            playlistUL.querySelector(".playlist-drop-target") &&
+            playlist.length === 0
+          ) {
+            insertAtIndexForExternal = 0;
           }
+          await processDroppedItems(items, insertAtIndexForExternal);
         }
       }
       draggedItemIndex = null;
@@ -1262,23 +1348,13 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
     bodyDropZone.addEventListener("drop", async (e) => {
-      if (playlistUL.contains(e.target)) return;
-      if (e.dataTransfer.types.includes("Files")) {
+      if (playlistUL.contains(e.target)) return; // Already handled by playlistUL
+      if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+        // Check items for folder drop
         e.preventDefault();
         e.stopPropagation();
-        mainPlayerPanel.classList.remove("dragover-body");
-        const files = e.dataTransfer.files;
-        if (files?.length) {
-          const audioP = Array.from(files)
-            .filter(
-              (f) =>
-                f.type.startsWith("audio/") ||
-                /\.(mp3|wav|ogg|m4a|flac|aac)$/i.test(f.name)
-            )
-            .map((f) => f.path);
-          if (audioP.length > 0)
-            await addFilesToPlaylist(audioP, playlist.length === 0, -1);
-        }
+        if (mainPlayerPanel) mainPlayerPanel.classList.remove("dragover-body");
+        await processDroppedItems(e.dataTransfer.items, -2); // Use -2 to signify append for body drop
       }
     });
   }
@@ -1322,7 +1398,6 @@ document.addEventListener("DOMContentLoaded", () => {
           }
           if (durationRaw != null && !isNaN(durationRaw))
             durationFormatted = formatTime(durationRaw);
-
           const newTrack = {
             path: filePath,
             name,
@@ -1387,10 +1462,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderPlaylist();
   updatePlaylistToggleBtnTextDOM();
   updateShuffleButtonUI();
-  // Initialize EQ button REMOVED
-  // if (eqToggleBtn && eqIndicator) { ... }
   if (vizToggleBtn) {
-    // Initialize visualizer toggle button state
     vizToggleBtn.classList.toggle("active", isVisualizerActive);
     vizToggleBtn.title = isVisualizerActive
       ? "Turn Visualizer Off"

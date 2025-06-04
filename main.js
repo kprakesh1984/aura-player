@@ -2,7 +2,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
 const path = require("path");
 const Store = require("electron-store");
-const fs = require("fs");
+const fs = require("fs"); // fs is crucial here
 
 const store = new Store({
   defaults: {
@@ -15,12 +15,11 @@ let mainWindow;
 let filesToOpenOnReady = [];
 
 // Define constants for window dimensions and content heights
-const ORIGINAL_MAIN_PLAYER_CONTENT_HEIGHT = 288; // Original height before adding more top padding
-const EXTRA_TOP_PADDING_MAIN_PLAYER = 10; // The amount of extra padding added to .main-player in CSS
-
+const ORIGINAL_MAIN_PLAYER_CONTENT_HEIGHT = 288;
+const EXTRA_TOP_PADDING_MAIN_PLAYER = 10;
 const MAIN_PLAYER_CONTENT_HEIGHT =
-  ORIGINAL_MAIN_PLAYER_CONTENT_HEIGHT + EXTRA_TOP_PADDING_MAIN_PLAYER; // Now 298px
-const DOCKED_PLAYLIST_AREA_HEIGHT = 250; // Height of the playlist area itself
+  ORIGINAL_MAIN_PLAYER_CONTENT_HEIGHT + EXTRA_TOP_PADDING_MAIN_PLAYER;
+const DOCKED_PLAYLIST_AREA_HEIGHT = 250;
 const PLAYER_FIXED_WIDTH = 380;
 
 function handleOpenFile(filePath) {
@@ -75,14 +74,13 @@ function handleOpenFile(filePath) {
 }
 
 const gotTheLock = app.requestSingleInstanceLock();
-
 if (!gotTheLock) {
   console.log(
     "Main: Another instance detected. Quitting this new (secondary) instance."
   );
   app.quit();
 } else {
-  app.on("second-instance", (event, commandLine, workingDirectory) => {
+  app.on("second-instance", (event, commandLine) => {
     console.log("Main: 'second-instance' event. CommandLine:", commandLine);
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
@@ -132,10 +130,9 @@ function createMainWindow() {
   console.log("Main: createMainWindow called.");
   const lastPlaylistVisibleState = store.get("playlistVisible");
   const lastVolumeState = store.get("lastVolume");
-  let initialWindowHeight = MAIN_PLAYER_CONTENT_HEIGHT; // Use the updated constant
-  if (lastPlaylistVisibleState === true) {
+  let initialWindowHeight = MAIN_PLAYER_CONTENT_HEIGHT;
+  if (lastPlaylistVisibleState === true)
     initialWindowHeight += DOCKED_PLAYLIST_AREA_HEIGHT;
-  }
   console.log(
     "Main: Initial playlist visible:",
     lastPlaylistVisibleState,
@@ -150,7 +147,7 @@ function createMainWindow() {
     minWidth: PLAYER_FIXED_WIDTH,
     maxWidth: PLAYER_FIXED_WIDTH,
     minHeight: initialWindowHeight,
-    maxHeight: initialWindowHeight,
+    maxHeight: initialWindowHeight, // Will be adjusted by IPC
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -160,10 +157,8 @@ function createMainWindow() {
     show: false,
     icon: path.join(__dirname, "assets", "icons", "icon.ico"),
   });
-
   mainWindow.loadFile("index.html");
   mainWindow.setMenu(null);
-
   mainWindow.webContents.on("did-finish-load", () => {
     console.log("Main: mainWindow 'did-finish-load'.");
     if (mainWindow && mainWindow.webContents && !mainWindow.isDestroyed()) {
@@ -178,30 +173,21 @@ function createMainWindow() {
         lastPlaylistVisibleState
       );
       mainWindow.webContents.send("set-initial-volume", lastVolumeState);
-
       let filesToProcessNow = [...filesToOpenOnReady];
       filesToOpenOnReady = [];
       const args = process.defaultApp
         ? process.argv.slice(2)
         : process.argv.slice(1);
-      const filePathFromArg = args.find((arg) => {
-        if (!arg.startsWith("--") && arg !== ".") {
-          const supportedExtensions = [
-            ".mp3",
-            ".m4a",
-            ".aac",
-            ".wav",
-            ".ogg",
-            ".flac",
-          ];
-          return supportedExtensions.includes(path.extname(arg).toLowerCase());
-        }
-        return false;
-      });
-      if (filePathFromArg) {
-        if (!filesToProcessNow.includes(filePathFromArg))
-          filesToProcessNow.push(filePathFromArg);
-      }
+      const filePathFromArg = args.find(
+        (arg) =>
+          !arg.startsWith("--") &&
+          arg !== "." &&
+          [".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac"].includes(
+            path.extname(arg).toLowerCase()
+          )
+      );
+      if (filePathFromArg && !filesToProcessNow.includes(filePathFromArg))
+        filesToProcessNow.push(filePathFromArg);
       if (filesToProcessNow.length > 0) {
         filesToProcessNow.forEach((fp) => {
           const supportedExtensions = [
@@ -240,7 +226,6 @@ function createMainWindow() {
       }
     }
   });
-
   mainWindow.once("ready-to-show", () => {
     console.log("Main: mainWindow 'ready-to-show'.");
     mainWindow.show();
@@ -265,6 +250,7 @@ ipcMain.handle("dialog:openFiles", async () => {
           name: "Audio Files",
           extensions: ["mp3", "m4a", "aac", "ogg", "wav", "flac"],
         },
+        { name: "All Files", extensions: ["*"] },
       ],
     });
     if (canceled || !filePaths || filePaths.length === 0) return [];
@@ -278,11 +264,11 @@ ipcMain.handle("dialog:openFiles", async () => {
 ipcMain.handle("get-audio-metadata", async (event, filePath) => {
   try {
     const { parseFile } = await import("music-metadata");
-    const metadata = await parseFile(filePath, { duration: true });
-    console.log(
-      `Main: Raw common metadata for ${path.basename(filePath)}:`,
-      metadata.common
-    );
+    const metadata = await parseFile(filePath, {
+      duration: true,
+      skipCovers: true,
+      skipPostHeaders: true,
+    });
     const common = metadata.common;
     let artistString = "";
     if (
@@ -314,11 +300,53 @@ ipcMain.handle("get-audio-metadata", async (event, filePath) => {
   } catch (error) {
     console.error(
       `Main: Error parsing metadata for ${filePath}:`,
-      error.message,
-      error.stack
+      error.message
     );
     return null;
   }
+});
+
+// NEW IPC HANDLER for reading dropped folder contents
+ipcMain.handle("read-dropped-folder", async (event, folderPath) => {
+  console.log(`Main: Reading folder for audio files: ${folderPath}`);
+  const supportedExtensions = [".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac"];
+  let audioFiles = [];
+
+  // Recursive helper function to read directories
+  const readDirectory = (dir) => {
+    try {
+      const entries = fs.readdirSync(dir, { withFileTypes: true });
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          // ---- RECURSIVE CALL ----
+          readDirectory(fullPath); // Scan subdirectories
+          // ---- END RECURSIVE ----
+        } else if (
+          entry.isFile() &&
+          supportedExtensions.includes(path.extname(entry.name).toLowerCase())
+        ) {
+          audioFiles.push(fullPath);
+        }
+      }
+    } catch (err) {
+      console.error(`Main: Error reading directory ${dir}:`, err.message);
+      // Continue if one subdirectory is unreadable, for example
+    }
+  };
+
+  if (fs.existsSync(folderPath) && fs.lstatSync(folderPath).isDirectory()) {
+    readDirectory(folderPath); // Start recursive read
+  } else {
+    console.warn(
+      `Main: Dropped path is not a valid directory or does not exist: ${folderPath}`
+    );
+  }
+
+  console.log(
+    `Main: Found ${audioFiles.length} audio files in and under ${folderPath}.`
+  );
+  return audioFiles;
 });
 
 ipcMain.on(
@@ -347,36 +375,46 @@ ipcMain.on(
 ipcMain.on(
   "set-main-window-size-and-visibility",
   (event, newWidthIgnored, heightOption, isPlaylistNowVisible) => {
-    console.log(
-      "Main IPC: 'set-main-window-size-and-visibility'. HeightOpt:",
-      heightOption,
-      "Visible:",
-      isPlaylistNowVisible
-    );
     if (mainWindow) {
-      let targetContentHeight;
+      let targetWindowHeight; // Renamed from targetContentHeight for clarity
       if (heightOption === "player_with_playlist") {
-        targetContentHeight =
-          MAIN_PLAYER_CONTENT_HEIGHT + DOCKED_PLAYLIST_AREA_HEIGHT;
+        targetWindowHeight = PLAYER_FIXED_WIDTH + DOCKED_PLAYLIST_AREA_HEIGHT; // Using PLAYER_FIXED_WIDTH was a typo, should be player height
+        // Corrected:
+        targetWindowHeight =
+          (store.get("playlistVisible")
+            ? MAIN_PLAYER_CONTENT_HEIGHT
+            : MAIN_PLAYER_CONTENT_HEIGHT - EXTRA_TOP_PADDING_MAIN_PLAYER) +
+          DOCKED_PLAYLIST_AREA_HEIGHT;
+        // Simpler and correct logic as per previous discussion for player height:
+        targetWindowHeight =
+          MAIN_PLAYER_CONTENT_HEIGHT + DOCKED_PLAYLIST_AREA_HEIGHT; // When playlist is shown
+        if (!isPlaylistNowVisible) {
+          // This block seems to be for when playlist is hidden.
+          targetWindowHeight = MAIN_PLAYER_CONTENT_HEIGHT;
+        }
       } else {
-        targetContentHeight = MAIN_PLAYER_CONTENT_HEIGHT; // Use updated constant
+        // "player_only"
+        targetWindowHeight = MAIN_PLAYER_CONTENT_HEIGHT;
       }
+
+      // Let's simplify window height logic based on isPlaylistNowVisible directly
+      if (isPlaylistNowVisible) {
+        targetWindowHeight =
+          MAIN_PLAYER_CONTENT_HEIGHT + DOCKED_PLAYLIST_AREA_HEIGHT;
+        mainWindow.setMinimumSize(PLAYER_FIXED_WIDTH, targetWindowHeight);
+        mainWindow.setMaximumSize(PLAYER_FIXED_WIDTH, targetWindowHeight);
+      } else {
+        targetWindowHeight = MAIN_PLAYER_CONTENT_HEIGHT;
+        mainWindow.setMinimumSize(PLAYER_FIXED_WIDTH, targetWindowHeight);
+        mainWindow.setMaximumSize(PLAYER_FIXED_WIDTH, targetWindowHeight);
+      }
+
       console.log(
-        "Main IPC: Calculated targetContentHeight:",
-        targetContentHeight
+        "Main IPC: Calculated targetWindowHeight:",
+        targetWindowHeight
       );
-      mainWindow.setMinimumSize(PLAYER_FIXED_WIDTH, targetContentHeight);
-      mainWindow.setMaximumSize(PLAYER_FIXED_WIDTH, targetContentHeight);
-      mainWindow.setSize(PLAYER_FIXED_WIDTH, targetContentHeight, false);
-      console.log(
-        "Main IPC: Window resized. Storing playlistVisible:",
-        isPlaylistNowVisible
-      );
+      mainWindow.setSize(PLAYER_FIXED_WIDTH, targetWindowHeight, false);
       store.set("playlistVisible", isPlaylistNowVisible);
-    } else {
-      console.error(
-        "Main IPC: 'set-main-window-size-and-visibility' - mainWindow is null!"
-      );
     }
   }
 );
@@ -384,6 +422,4 @@ ipcMain.on(
 ipcMain.on("save-volume-state", (event, volume) => {
   if (typeof volume === "number" && volume >= 0 && volume <= 1)
     store.set("lastVolume", volume);
-  else
-    console.warn("Main IPC Warning: Invalid volume received to save:", volume);
 });
