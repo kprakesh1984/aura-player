@@ -31,7 +31,7 @@ body {
 
 /* Main Player Panel - Contains controls, track info, visualizer */
 .main-player {
-  padding: 25px 20px 15px 20px;
+  padding: 35px 20px 15px 20px;
   flex-shrink: 0;
   position: relative;
   z-index: 2;
