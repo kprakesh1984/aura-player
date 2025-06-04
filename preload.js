@@ -1,3 +1,4 @@
+// preload.js
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
@@ -27,8 +28,10 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
   // Volume State Persistence
   saveVolume: (volume) => ipcRenderer.send("save-volume-state", volume),
-  // --- New function for metadata ---
+
+  // Metadata Function (was previously marked as "New function for metadata ---")
   getMetadata: (filePath) => ipcRenderer.invoke("get-audio-metadata", filePath),
+
   onSetInitialVolume: (callback) =>
     ipcRenderer.on("set-initial-volume", (_event, volume) => callback(volume)),
 
@@ -37,4 +40,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("open-file-in-player", (_event, filePath) =>
       callback(filePath)
     ),
+
+  // --- FUNCTION FOR FOLDER DRAG AND DROP ---
+  getFilesFromDroppedFolder: (folderPath) =>
+    ipcRenderer.invoke("read-dropped-folder", folderPath),
 });
