@@ -3,17 +3,19 @@
 Your personal, lightweight music player for enjoying your local audio collection on Windows!
 
 ## ✨ Features
-*   **Wide Format Support:** Plays a variety of audio formats including `.mp3`, `.flac`, `.ogg`, `.m4a`, `.wav`, and more.
+*   **Wide Format Support:** Plays a variety of audio formats including `.mp3`, `.aac`, `.flac`, `.ogg`, `.m4a`, `.wav`,`.opus` and more.
 *   **Clean Metadata Display:** Shows the song **Title** and **Contributing Artist(s)/Album Artist** if available in the track's metadata. Displays filename (without extension) as a fallback.
 *   **Interactive Playlist:**
     *   Add individual or multiple files.
     *   Drag and drop files directly onto the player or playlist.
+    *   Drag and drop folders directly onto the playlist.
     *   See numbered tracks in the playlist for easy reference.
     *   Reorder tracks within the playlist using drag and drop.
     *   Remove single or multiple selected tracks via a context menu (right-click).
     *   Select all tracks in the playlist using **Ctrl+A**.
     *   Show or hide the playlist panel.
     *   Tooltips in the playlist show the full filename including extension.
+    *   Visualizer which can be enabled and disabled
 *   **Standard Playback Controls:**
     *   Play / Pause
     *   Next / Previous Track
