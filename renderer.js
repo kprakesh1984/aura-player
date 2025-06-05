@@ -452,7 +452,7 @@ document.addEventListener("DOMContentLoaded", () => {
       renderPlaylist();
     });
     audioPlayer.addEventListener("ended", () => {
-      playNextTrackLogic("audio_ended_natural");
+      playNextTrackLogic("audio_ended_event");
     });
     audioPlayer.addEventListener("error", (e) => {
       const errSrc = e.target.src;
@@ -495,17 +495,10 @@ document.addEventListener("DOMContentLoaded", () => {
           currentlyPlayingInfo &&
           audioPlayer.src === currentlyPlayingInfo.path
         ) {
-          console.log(
-            "Play after stop/end: Resuming/Replaying track from start:",
-            currentlyPlayingInfo.name
-          );
-          if (audioPlayer.src !== currentlyPlayingInfo.path) {
-            audioPlayer.src = currentlyPlayingInfo.path;
-          } // Ensure src if cleared
           audioPlayer.currentTime = 0;
-          audioPlayer
-            .play()
-            .catch((e) =>
+          const playPromise = audioPlayer.play();
+          if (playPromise !== undefined)
+            playPromise.catch((e) =>
               updateTrackInfoDisplay(
                 "Error.",
                 currentlyPlayingInfo.artist || ""
@@ -523,19 +516,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? currentTrackIndex
                 : 0;
             if (playlist[indexToPlay])
-              playTrack(
-                indexToPlay,
-                "playPause_stopped_noSpecificTrack_resume"
-              );
+              playTrack(indexToPlay, "playPause_stopped_noSpecificTrack");
           }
         } else if (
           audioPlayer.src &&
           !audioPlayer.src.endsWith("index.html") &&
           currentlyPlayingInfo
         ) {
-          audioPlayer
-            .play()
-            .catch((e) =>
+          const playPromise = audioPlayer.play();
+          if (playPromise !== undefined)
+            playPromise.catch((e) =>
               updateTrackInfoDisplay(
                 "Error.",
                 currentlyPlayingInfo.artist || ""
@@ -547,7 +537,7 @@ document.addEventListener("DOMContentLoaded", () => {
               ? currentTrackIndex
               : 0;
           if (playlist[indexToPlay])
-            playTrack(indexToPlay, "playPause_paused_maybeNoSrc_resume");
+            playTrack(indexToPlay, "playPause_paused_maybeNoSrc");
         }
       } else {
         audioPlayer.pause();
@@ -560,15 +550,12 @@ document.addEventListener("DOMContentLoaded", () => {
       if (audioPlayer) {
         audioPlayer.pause();
         audioPlayer.currentTime = 0;
-        if (seekBar) seekBar.value = 0;
-        if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
       }
+      if (seekBar) seekBar.value = 0;
+      if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
       if (playPauseBtn) playPauseBtn.innerHTML = playIcon;
       if (isVisualizerActive) stopVisualizer();
       renderPlaylist();
-      console.log(
-        "Stop button pressed. Player explicitly stopped. Track info retained, time reset."
-      );
     });
   }
   if (fastForwardBtn)
@@ -632,12 +619,17 @@ document.addEventListener("DOMContentLoaded", () => {
       li.dataset.index = index;
       const tNS = document.createElement("span");
       tNS.className = "track-name-span";
-      tNS.textContent = `${index + 1}. ${track.name}`;
+      if (track.isLoadingMetadata) {
+        tNS.textContent = `${index + 1}. ${track.name} (Loading...)`;
+      } else {
+        tNS.textContent = `${index + 1}. ${track.title || track.name}`;
+      }
       tNS.title = getFileName(track.path, true);
       li.appendChild(tNS);
       const dS = document.createElement("span");
       dS.className = "track-duration-span";
-      dS.textContent = track.durationFormatted || "--:--";
+      dS.textContent =
+        track.durationFormatted || (track.isLoadingMetadata ? "..." : "--:--");
       li.appendChild(dS);
       li.classList.remove(
         "playing-actual",
@@ -728,7 +720,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const originalDisplayArtist =
       songArtistDisplay?.textContent || PLACEHOLDER_ARTIST;
     const existingPathsInPlaylist = new Set(playlist.map((t) => t.path));
-    updateTrackInfoDisplay("Loading songs...", "");
+    updateTrackInfoDisplay(
+      filePaths.length > 1 ? "Adding songs..." : "Loading song...",
+      ""
+    );
     let tempNewTracks = [];
     for (let i = 0; i < filePaths.length; i++) {
       const path = filePaths[i];
@@ -736,92 +731,120 @@ document.addEventListener("DOMContentLoaded", () => {
         continue;
       }
       const name = getFileName(path, false);
-      if (filePaths.length > 1)
+      if (filePaths.length > 1 && i < 2)
         updateTrackInfoDisplay(
           `Loading: ${name}`,
           `(${i + 1}/${filePaths.length})`
         );
-      const metadataFromIPC = await fetchTrackMetadata(path);
+      const placeholderTrack = {
+        path,
+        name,
+        title: name,
+        artist: "",
+        album: "",
+        durationRaw: null,
+        durationFormatted: "...",
+        isLoadingMetadata: true,
+      };
+      tempNewTracks.push(placeholderTrack);
+      existingPathsInPlaylist.add(path);
+      newTracksAddedCount++;
+    }
+    if (newTracksAddedCount === 0) {
+      if (
+        !currentlyPlayingInfo &&
+        (originalDisplayTitle.startsWith("Loading:") ||
+          originalDisplayTitle === "Adding songs...")
+      ) {
+        updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
+      } else if (!currentlyPlayingInfo) {
+        updateTrackInfoDisplay(originalDisplayTitle, originalDisplayArtist);
+      }
+      return;
+    }
+    if (insertAtIndex !== -1 && insertAtIndex <= playlist.length) {
+      playlist.splice(insertAtIndex, 0, ...tempNewTracks);
+      firstNewIdxInPlaylist = insertAtIndex;
+      if (currentTrackIndex >= insertAtIndex)
+        currentTrackIndex += newTracksAddedCount;
+      selectedIndices = selectedIndices
+        .map((idx) => (idx >= insertAtIndex ? idx + newTracksAddedCount : idx))
+        .filter((idx) => idx < playlist.length);
+      if (isShuffleActive && originalPlaylistOrder)
+        originalPlaylistOrder.splice(
+          insertAtIndex,
+          0,
+          ...tempNewTracks.map((t) => ({ ...t }))
+        );
+    } else {
+      playlist.push(...tempNewTracks);
+      firstNewIdxInPlaylist = oldLen;
+      if (isShuffleActive && originalPlaylistOrder) {
+        tempNewTracks.forEach((nt) => {
+          if (!originalPlaylistOrder.some((ot) => ot.path === nt.path))
+            originalPlaylistOrder.push({ ...nt });
+        });
+      }
+    }
+    renderPlaylist();
+    if (!currentlyPlayingInfo && !(playFirstNew && newTracksAddedCount > 0)) {
+      if (
+        originalDisplayTitle === "Adding songs..." ||
+        originalDisplayTitle.startsWith("Loading:")
+      )
+        updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
+      else if (!currentlyPlayingInfo)
+        updateTrackInfoDisplay(originalDisplayTitle, originalDisplayArtist);
+    }
+    for (let i = 0; i < tempNewTracks.length; i++) {
+      const placeholder = tempNewTracks[i];
+      const metadataFromIPC = await fetchTrackMetadata(placeholder.path);
       let durationRaw = metadataFromIPC.duration;
       let durationFormatted = "--:--";
       if (durationRaw == null || isNaN(durationRaw)) {
-        console.warn(
-          `Renderer: Duration for ${name} NOT VALID from IPC (value: ${durationRaw}). FALLING BACK to slow getAudioDuration.`
-        );
-        durationRaw = await getAudioDuration(path);
+        durationRaw = await getAudioDuration(placeholder.path);
       }
       if (durationRaw != null && !isNaN(durationRaw)) {
         durationFormatted = formatTime(durationRaw);
       }
-      const newTrack = {
-        path,
-        name,
-        title: metadataFromIPC.title,
-        artist: metadataFromIPC.artist,
-        album: metadataFromIPC.album,
-        durationRaw,
-        durationFormatted,
-      };
-      tempNewTracks.push(newTrack);
-      existingPathsInPlaylist.add(path);
-      newTracksAddedCount++;
-    }
-    if (newTracksAddedCount > 0) {
-      let actualInsertionPoint;
-      if (insertAtIndex !== -1 && insertAtIndex <= playlist.length) {
-        playlist.splice(insertAtIndex, 0, ...tempNewTracks);
-        actualInsertionPoint = insertAtIndex;
-        if (currentTrackIndex >= insertAtIndex)
-          currentTrackIndex += newTracksAddedCount;
-        selectedIndices = selectedIndices
-          .map((idx) =>
-            idx >= insertAtIndex ? idx + newTracksAddedCount : idx
-          )
-          .filter((idx) => idx < playlist.length);
-        if (isShuffleActive && originalPlaylistOrder)
-          originalPlaylistOrder.splice(
-            insertAtIndex,
-            0,
-            ...tempNewTracks.map((t) => ({ ...t }))
+      const trackInPlaylist = playlist.find((t) => t.path === placeholder.path);
+      if (trackInPlaylist) {
+        trackInPlaylist.title = metadataFromIPC.title;
+        trackInPlaylist.artist = metadataFromIPC.artist;
+        trackInPlaylist.album = metadataFromIPC.album;
+        trackInPlaylist.durationRaw = durationRaw;
+        trackInPlaylist.durationFormatted = durationFormatted;
+        trackInPlaylist.isLoadingMetadata = false;
+        if (
+          currentlyPlayingInfo &&
+          currentlyPlayingInfo.path === trackInPlaylist.path
+        ) {
+          currentlyPlayingInfo = { ...trackInPlaylist };
+          updateTrackInfoDisplay(
+            currentlyPlayingInfo.title || currentlyPlayingInfo.name,
+            currentlyPlayingInfo.artist
           );
-      } else {
-        playlist.push(...tempNewTracks);
-        actualInsertionPoint = oldLen;
-        if (isShuffleActive && originalPlaylistOrder)
-          tempNewTracks.forEach((nt) => {
-            if (!originalPlaylistOrder.some((ot) => ot.path === nt.path))
-              originalPlaylistOrder.push({ ...nt });
-          });
+        }
       }
-      if (firstNewIdxInPlaylist === -1 && tempNewTracks.length > 0)
-        firstNewIdxInPlaylist = actualInsertionPoint;
+      renderPlaylist();
     }
-    if (currentlyPlayingInfo)
-      updateTrackInfoDisplay(
-        currentlyPlayingInfo.title || currentlyPlayingInfo.name,
-        currentlyPlayingInfo.artist
-      );
-    else if (
-      newTracksAddedCount > 0 &&
-      (playFirstNew || oldLen === 0) &&
-      firstNewIdxInPlaylist !== -1 &&
-      playlist[firstNewIdxInPlaylist]
-    ) {
-      const firstTrack = playlist[firstNewIdxInPlaylist];
-      updateTrackInfoDisplay(
-        firstTrack.title || firstTrack.name,
-        firstTrack.artist
-      );
-    } else if (originalDisplayTitle !== "Loading songs...")
-      updateTrackInfoDisplay(originalDisplayTitle, originalDisplayArtist);
-    else updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
-    renderPlaylist();
     if (
-      newTracksAddedCount > 0 &&
-      (playFirstNew || oldLen === 0) &&
-      firstNewIdxInPlaylist !== -1
+      !currentlyPlayingInfo &&
+      (originalDisplayTitle === "Adding songs..." ||
+        originalDisplayTitle.startsWith("Loading:"))
     ) {
-      playTrack(firstNewIdxInPlaylist, "addFilesToPlaylist_playFirstNew");
+      updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
+    }
+    if (
+      playFirstNew &&
+      newTracksAddedCount > 0 &&
+      firstNewIdxInPlaylist !== -1 &&
+      firstNewIdxInPlaylist < playlist.length
+    ) {
+      playTrack(
+        firstNewIdxInPlaylist,
+        "addFilesToPlaylist_playFirstNew_after_metadata"
+      );
     }
   }
   function playTrack(index, calledFrom = "unknown") {
@@ -833,7 +856,7 @@ document.addEventListener("DOMContentLoaded", () => {
       selectedIndices = [index];
       lastClickedIndex = index;
       if (trackToLoad?.path) {
-        const needsNew =
+        const needsNewSrc =
           currentlyPlayingInfo?.path !== trackToLoad.path ||
           isPlayerExplicitlyStopped ||
           audioPlayer.error ||
@@ -841,7 +864,7 @@ document.addEventListener("DOMContentLoaded", () => {
           !audioPlayer.src ||
           audioPlayer.src.endsWith("index.html") ||
           audioPlayer.src === window.location.href + "#";
-        if (needsNew) {
+        if (needsNewSrc) {
           audioPlayer.src = trackToLoad.path;
           currentlyPlayingInfo = { ...trackToLoad };
           updateTrackInfoDisplay(
@@ -850,10 +873,12 @@ document.addEventListener("DOMContentLoaded", () => {
           );
           if (currentTimeDisplay)
             currentTimeDisplay.textContent = formatTime(0);
-          if (durationDisplay) durationDisplay.textContent = formatTime(0);
+          if (durationDisplay)
+            durationDisplay.textContent =
+              trackToLoad.durationFormatted || formatTime(0);
           if (seekBar) {
             seekBar.value = 0;
-            seekBar.max = 0;
+            seekBar.max = trackToLoad.durationRaw || 0;
           }
           const pP = audioPlayer.play();
           if (pP)
@@ -981,7 +1006,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function playNextTrackLogic(reason = "unknown_next") {
-    console.log("playNextTrackLogic called by:", reason);
+    console.log(
+      "playNextTrackLogic called by:",
+      reason,
+      ". Current track index:",
+      currentTrackIndex,
+      "Playlist length:",
+      playlist.length
+    );
     if (playlist.length === 0) {
       isPlayerExplicitlyStopped = true;
       currentlyPlayingInfo = null;
@@ -1003,74 +1035,89 @@ document.addEventListener("DOMContentLoaded", () => {
       renderPlaylist();
       return;
     }
-    let newIndex = currentTrackIndex + 1;
-    if (newIndex >= playlist.length) {
+
+    // If called from 'next_button_click', it means the user wants the next track.
+    // If called from 'audio_ended_event', it means the current track finished.
+    let newIndexToPlay = currentTrackIndex + 1;
+
+    if (newIndexToPlay >= playlist.length) {
       console.log(
-        "Reached end of playlist. Stopping and resetting last song to beginning."
+        "Reached end of playlist. Player will stop and reset last song."
       );
       isPlayerExplicitlyStopped = true;
-      if (audioPlayer) {
+      if (audioPlayer && currentlyPlayingInfo) {
         audioPlayer.pause();
-        audioPlayer.currentTime = 0; // MODIFICATION: Reset time to 0 for the last played song
-        if (seekBar) seekBar.value = 0; // MODIFICATION: Reset seek bar UI
-        if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0); // MODIFICATION: Reset time display
+        audioPlayer.currentTime = 0;
+        if (seekBar) seekBar.value = 0;
+        if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
+      } else if (audioPlayer) {
+        audioPlayer.pause();
+        if (
+          playlist[currentTrackIndex] &&
+          audioPlayer.src === playlist[currentTrackIndex].path
+        ) {
+          audioPlayer.currentTime = 0;
+          if (seekBar) seekBar.value = 0;
+          if (currentTimeDisplay)
+            currentTimeDisplay.textContent = formatTime(0);
+        } else {
+          audioPlayer.removeAttribute("src");
+          audioPlayer.load();
+          updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
+          if (durationDisplay && seekBar) {
+            durationDisplay.textContent = formatTime(0);
+            seekBar.value = 0;
+            seekBar.max = 0;
+          }
+          if (currentTimeDisplay)
+            currentTimeDisplay.textContent = formatTime(0);
+          // currentTrackIndex might still be last song's index or -1 if playlist was cleared
+        }
       }
       if (playPauseBtn) playPauseBtn.innerHTML = playIcon;
-      // currentTrackIndex remains on the last song.
-      // currentlyPlayingInfo also remains for the last song.
-      if (isVisualizerActive) stopVisualizer();
-      renderPlaylist(); // Update UI to show no track is "playing-actual" but last one might be "selected-ui"
-      return;
-    }
-    playTrack(newIndex, "playNextTrackLogic_advance");
-  }
-
-  function playPrevTrackLogic(reason = "unknown_prev") {
-    console.log("playPrevTrackLogic called by:", reason);
-    if (playlist.length === 0) {
-      isPlayerExplicitlyStopped = true;
-      currentlyPlayingInfo = null;
-      if (audioPlayer) {
-        audioPlayer.pause();
-        audioPlayer.removeAttribute("src");
-        audioPlayer.load();
-      }
-      updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
-      if (durationDisplay && seekBar) {
-        durationDisplay.textContent = formatTime(0);
-        seekBar.value = 0;
-        seekBar.max = 0;
-      }
-      if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
-      if (playPauseBtn) playPauseBtn.innerHTML = playIcon;
-      currentTrackIndex = -1;
       if (isVisualizerActive) stopVisualizer();
       renderPlaylist();
+      return;
+    }
+    playTrack(newIndexToPlay, `playNextTrackLogic_to_idx_${newIndexToPlay}`);
+  }
+
+  function playPrevTrackLogic() {
+    if (playlist.length === 0) {
+      if (isVisualizerActive) stopVisualizer();
+      return;
+    }
+    if (
+      audioPlayer.currentTime > 3 &&
+      currentTrackIndex >= 0 &&
+      currentTrackIndex < playlist.length
+    ) {
+      audioPlayer.currentTime = 0;
+      isPlayerExplicitlyStopped = false;
+      if (audioPlayer.paused) {
+        const pP = audioPlayer.play();
+        if (pP)
+          pP.catch((e) => {
+            isPlayerExplicitlyStopped = true;
+          });
+      }
       return;
     }
     let newIndex = currentTrackIndex - 1;
     if (newIndex < 0) {
-      // Clicked Previous on the first song
-      console.log(
-        "At start of playlist. Stopping and resetting first song to beginning."
-      );
-      isPlayerExplicitlyStopped = true;
-      if (audioPlayer) {
-        audioPlayer.pause();
-        audioPlayer.currentTime = 0; // Reset time to 0 for the current (first) song
+      if (currentTrackIndex === 0) {
+        audioPlayer.currentTime = 0;
         if (seekBar) seekBar.value = 0;
         if (currentTimeDisplay) currentTimeDisplay.textContent = formatTime(0);
+        if (!audioPlayer.paused) audioPlayer.pause();
+        if (playPauseBtn) playPauseBtn.innerHTML = playIcon;
+        isPlayerExplicitlyStopped = true;
+        renderPlaylist();
       }
-      if (playPauseBtn) playPauseBtn.innerHTML = playIcon;
-      // currentTrackIndex remains 0.
-      // currentlyPlayingInfo remains for the first song.
-      if (isVisualizerActive) stopVisualizer();
-      renderPlaylist(); // Update UI
       return;
     }
     playTrack(newIndex, "playPrevTrackLogic_advance");
   }
-
   function updateShuffleButtonUI() {
     if (!shuffleBtn) return;
     shuffleBtn.classList.toggle("shuffle-active", isShuffleActive);
@@ -1116,7 +1163,45 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // --- Event Listeners for Playback/File Controls ---
   if (prevBtn) prevBtn.addEventListener("click", playPrevTrackLogic);
-  if (nextBtn) nextBtn.addEventListener("click", playNextTrackLogic);
+  if (nextBtn)
+    nextBtn.addEventListener("click", () => {
+      // MODIFIED
+      if (playlist.length === 0) return;
+      // If on the last song AND (player is paused AND explicitly stopped by user/end of playlist)
+      if (
+        currentTrackIndex === playlist.length - 1 &&
+        audioPlayer.paused &&
+        isPlayerExplicitlyStopped
+      ) {
+        console.log(
+          "Next clicked on last song (player stopped at its end): Doing nothing further."
+        );
+        // Optionally ensure UI reflects it's at 0:00 if not already
+        if (
+          audioPlayer.currentTime !== 0 &&
+          currentlyPlayingInfo &&
+          audioPlayer.src === currentlyPlayingInfo.path
+        ) {
+          audioPlayer.currentTime = 0;
+          if (seekBar) seekBar.value = 0;
+          if (currentTimeDisplay)
+            currentTimeDisplay.textContent = formatTime(0);
+        }
+        return;
+      }
+      // If on the last song AND it's actively playing, do nothing.
+      if (
+        currentTrackIndex === playlist.length - 1 &&
+        !audioPlayer.paused &&
+        !isPlayerExplicitlyStopped
+      ) {
+        console.log(
+          "Next clicked on last song (currently playing): Doing nothing."
+        );
+        return;
+      }
+      playNextTrackLogic("next_button_click");
+    });
   if (shuffleBtn)
     shuffleBtn.addEventListener("click", () => {
       isShuffleActive = !isShuffleActive;
@@ -1183,7 +1268,7 @@ document.addEventListener("DOMContentLoaded", () => {
     dataTransferItems,
     baseInsertAtIndex = -1
   ) {
-    let filePathsToAdd = [];
+    let filePathsToProcess = [];
     const folderPromises = [];
     for (let i = 0; i < dataTransferItems.length; i++) {
       const item = dataTransferItems[i];
@@ -1197,7 +1282,7 @@ document.addEventListener("DOMContentLoaded", () => {
               (file.type.startsWith("audio/") ||
                 /\.(mp3|wav|ogg|m4a|flac|aac|opus)$/i.test(file.name))
             ) {
-              if (file.path) filePathsToAdd.push(file.path);
+              if (file.path) filePathsToProcess.push(file.path);
             }
           } else if (entry.isDirectory) {
             const dirFile = item.getAsFile();
@@ -1213,7 +1298,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 window.electronAPI
                   .getFilesFromDroppedFolder(dirFile.path)
                   .then((files) => {
-                    if (files?.length) filePathsToAdd.push(...files);
+                    if (files?.length) filePathsToProcess.push(...files);
                   })
                   .catch((err) => console.error("Folder IPC error:", err))
               );
@@ -1228,16 +1313,25 @@ document.addEventListener("DOMContentLoaded", () => {
               /\.(mp3|wav|ogg|m4a|flac|aac|opus)$/i.test(file.name)) &&
             file.path
           ) {
-            filePathsToAdd.push(file.path);
+            filePathsToProcess.push(file.path);
           }
         }
       }
     }
-    if (folderPromises.length > 0) await Promise.all(folderPromises);
-    if (filePathsToAdd.length > 0) {
+    if (folderPromises.length > 0) {
+      updateTrackInfoDisplay("Scanning folder(s)...", "");
+      await Promise.all(folderPromises);
+      updateTrackInfoDisplay(
+        currentlyPlayingInfo
+          ? currentlyPlayingInfo.title || currentlyPlayingInfo.name
+          : PLACEHOLDER_TITLE,
+        currentlyPlayingInfo ? currentlyPlayingInfo.artist : PLACEHOLDER_ARTIST
+      );
+    }
+    if (filePathsToProcess.length > 0) {
       const playFirst = playlist.length === 0;
       const finalInsertIdx = baseInsertAtIndex === -2 ? -1 : baseInsertAtIndex;
-      await addFilesToPlaylist(filePathsToAdd, playFirst, finalInsertIdx);
+      await addFilesToPlaylist(filePathsToProcess, playFirst, finalInsertIdx);
     }
   }
   if (playlistUL) {
@@ -1431,42 +1525,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   if (window.electronAPI?.onOpenFileInPlayer) {
     window.electronAPI.onOpenFileInPlayer(async (filePath) => {
-      if (filePath && typeof filePath === "string") {
-        const trackExistsIdx = playlist.findIndex((t) => t.path === filePath);
-        if (trackExistsIdx !== -1) {
-          isPlayerExplicitlyStopped = false;
-          playTrack(trackExistsIdx, "ipc_existing");
-        } else {
-          const name = getFileName(filePath, false);
-          if (playlist.length === 0)
-            updateTrackInfoDisplay(`Loading: ${name}`, "");
-          const metadataFromIPC = await fetchTrackMetadata(filePath);
-          let durationRaw = metadataFromIPC.duration;
-          let durationFormatted = "--:--";
-          if (durationRaw == null || isNaN(durationRaw)) {
-            console.warn(
-              `Renderer: Duration for ${name} (IPC open) NOT VALID from IPC (${durationRaw}). FALLING BACK.`
-            );
-            durationRaw = await getAudioDuration(filePath);
-          }
-          if (durationRaw != null && !isNaN(durationRaw))
-            durationFormatted = formatTime(durationRaw);
-          const newTrack = {
-            path: filePath,
-            name,
-            title: metadataFromIPC.title,
-            artist: metadataFromIPC.artist,
-            album: metadataFromIPC.album,
-            durationRaw,
-            durationFormatted,
-          };
-          playlist.push(newTrack);
-          renderPlaylist();
-          const newIdx = playlist.length - 1;
-          isPlayerExplicitlyStopped = false;
-          playTrack(newIdx, "ipc_new");
-        }
-      }
+      await addFilesToPlaylist([filePath], playlist.length === 0, -1);
     });
   } else console.warn("File open IPC missing.");
 
