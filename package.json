@@ -1,15 +1,16 @@
 {
   "name": "symphonie",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "A simple music player built with Electron.",
   "main": "main.js",
-  "author": "Rakesh KP",
+  "author": "Rakesh KP <rakeshkpk@gmail.com>",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "dist:win": "electron-builder --win --x64"
+    "dist:win": "electron-builder --win --x64",
+    "dist:linux": "electron-builder --linux"
   },
   "dependencies": {
     "electron-store": "^7.0.3",
@@ -28,7 +29,7 @@
     "compression": "maximum",
     "directories": {
       "output": "dist_electron",
-      "buildResources": "assets/icons"
+      "buildResources": "assets/icons" 
     },
     "files": [
       "**/*",
@@ -68,46 +69,45 @@
         "name": "AAC Audio File",
         "description": "AAC Audio File played by Symphonie",
         "role": "Viewer",
-        "icon": "audio_icon.ico",
+        "icon": "audio_icon.ico", 
         "mimeType": "audio/aac"
       },
       {
         "ext": "wav",
         "name": "WAV Audio File",
         "role": "Viewer",
-        "icon": "audio_icon.ico",
+        "icon": "audio_icon.ico", 
         "mimeType": "audio/wav"
       },
       {
         "ext": "ogg",
         "name": "OGG Vorbis Audio File",
         "role": "Viewer",
-        "icon": "audio_icon.ico",
+        "icon": "audio_icon.ico", 
         "mimeType": "audio/ogg"
       },
       {
         "ext": "flac",
         "name": "FLAC Audio File",
         "role": "Viewer",
-        "icon": "audio_icon.ico",
+        "icon": "audio_icon.ico", 
         "mimeType": "audio/flac"
+      },
+      { 
+        "ext": "opus",
+        "name": "Opus Audio File",
+        "description": "Opus Audio File played by Symphonie",
+        "role": "Viewer",
+        "icon": "audio_icon.ico", 
+        "mimeType": "audio/opus"
       }
     ],
     "win": {
-      "icon": "icon.ico",
+      "icon": "icon.ico", 
       "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        },
-        {
-          "target": "msi",
-          "arch": ["x64"]
-        },
-        {
-          "target": "portable",
-          "arch": ["x64"]
-        }
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "msi", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
       ],
       "requestedExecutionLevel": "asInvoker"
     },
@@ -119,8 +119,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Symphonie",
       "menuCategory": "Audio",
-      "installerIcon": "icon.ico",
-      "uninstallerIcon": "icon.ico",
+      "installerIcon": "icon.ico", 
+      "uninstallerIcon": "icon.ico", 
       "uninstallDisplayName": "${productName} Uninstaller",
       "differentialPackage": true
     },
@@ -138,9 +138,19 @@
       "target": ["dmg", "zip"]
     },
     "linux": {
-      "icon": ".",
-      "category": "Audio;Audio;",
-      "target": ["AppImage", "deb", "rpm"]
+      "icon": "linux",
+      "category": "Audio", 
+      "target": ["AppImage", "deb"], 
+      "maintainer": "Rakesh KP <rakeshkpk@gmail.com>",
+      "description": "A simple music player built with Electron.",
+      "desktop": {
+        "Name": "Symphonie",
+        "GenericName": "Music Player",
+        "Comment": "Play your local audio library with Symphonie.",
+        "Keywords": "music;audio;player;mp3;flac;aac;ogg;wav;opus;symphonie;",
+        "StartupNotify": "true",
+        "MimeType": "audio/mpeg;audio/mp4;audio/aac;audio/wav;audio/ogg;audio/x-flac;audio/flac;audio/opus;" 
+      }
     }
   }
 }
