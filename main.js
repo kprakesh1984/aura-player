@@ -4,6 +4,10 @@ const path = require("path");
 const Store = require("electron-store");
 const fs = require("fs");
 
+// Disable GPU to avoid Chromium errors on Linux (e.g., in WSL or minimal environments)
+app.commandLine.appendSwitch("disable-gpu");
+app.commandLine.appendSwitch("disable-software-rasterizer");
+
 const store = new Store({
   defaults: {
     playlistVisible: false,
