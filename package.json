@@ -138,7 +138,7 @@
       "target": ["dmg", "zip"]
     },
     "linux": {
-      "icon": "linux",
+      "icon": "assets/icons/linux",
       "category": "Audio", 
       "target": ["AppImage", "deb"], 
       "maintainer": "Rakesh KP <rakeshkpk@gmail.com>",

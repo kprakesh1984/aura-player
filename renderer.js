@@ -1,6 +1,6 @@
 // renderer.js
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("Renderer DOMContentLoaded: Script starting.");
+  /*   console.log("Renderer DOMContentLoaded: Script starting."); */
 
   // DOM Element References
   const audioPlayer = document.getElementById("audioPlayer");
@@ -153,11 +153,11 @@ document.addEventListener("DOMContentLoaded", () => {
           const d = tempAudio.duration;
           tempAudio.src = "";
           const fallbackEndTime = performance.now();
-          console.log(
+          /*  console.log(
             `getAudioDuration fallback for ${filename} took ${(
               fallbackEndTime - fallbackStartTime
             ).toFixed(2)}ms. Found: ${d}`
-          );
+          ); */
           resolve(isNaN(d) ? null : d);
         }
       };
@@ -848,7 +848,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
   function playTrack(index, calledFrom = "unknown") {
-    console.log(`DEBUG: playTrack - ${calledFrom} index: ${index}`);
+    /* console.log(`DEBUG: playTrack - ${calledFrom} index: ${index}`); */
     if (!audioPlayer || !songTitleDisplay || !songArtistDisplay) return;
     if (index >= 0 && index < playlist.length) {
       const trackToLoad = playlist[index];
@@ -1006,14 +1006,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function playNextTrackLogic(reason = "unknown_next") {
-    console.log(
+    /*  console.log(
       "playNextTrackLogic called by:",
       reason,
       ". Current track index:",
       currentTrackIndex,
       "Playlist length:",
       playlist.length
-    );
+    ); */
     if (playlist.length === 0) {
       isPlayerExplicitlyStopped = true;
       currentlyPlayingInfo = null;
@@ -1041,9 +1041,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let newIndexToPlay = currentTrackIndex + 1;
 
     if (newIndexToPlay >= playlist.length) {
-      console.log(
+      /*  console.log(
         "Reached end of playlist. Player will stop and reset last song."
-      );
+      ); */
       isPlayerExplicitlyStopped = true;
       if (audioPlayer && currentlyPlayingInfo) {
         audioPlayer.pause();
@@ -1173,9 +1173,9 @@ document.addEventListener("DOMContentLoaded", () => {
         audioPlayer.paused &&
         isPlayerExplicitlyStopped
       ) {
-        console.log(
+        /*  console.log(
           "Next clicked on last song (player stopped at its end): Doing nothing further."
-        );
+        ); */
         // Optionally ensure UI reflects it's at 0:00 if not already
         if (
           audioPlayer.currentTime !== 0 &&
@@ -1195,9 +1195,9 @@ document.addEventListener("DOMContentLoaded", () => {
         !audioPlayer.paused &&
         !isPlayerExplicitlyStopped
       ) {
-        console.log(
+        /* console.log(
           "Next clicked on last song (currently playing): Doing nothing."
-        );
+        ); */
         return;
       }
       playNextTrackLogic("next_button_click");
@@ -1291,9 +1291,9 @@ document.addEventListener("DOMContentLoaded", () => {
               dirFile.path &&
               window.electronAPI?.getFilesFromDroppedFolder
             ) {
-              console.log(
+              /* console.log(
                 `Renderer: Requesting main to read folder: ${dirFile.path}`
-              );
+              ); */
               folderPromises.push(
                 window.electronAPI
                   .getFilesFromDroppedFolder(dirFile.path)
@@ -1615,5 +1615,5 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
   }, 100);
-  console.log("Renderer: Script finished initialization.");
+  /*  console.log("Renderer: Script finished initialization."); */
 });
