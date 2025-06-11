@@ -910,15 +910,25 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  /* Function to play tracks */
   function playTrack(index, calledFrom = "unknown") {
-    /* console.log(`DEBUG: playTrack - ${calledFrom} index: ${index}`); */
-    if (!audioPlayer || !songTitleDisplay || !songArtistDisplay) return;
+    /*  console.log(`DEBUG: playTrack - Called from "${calledFrom}" with index: ${index}`);*/
+    if (!audioPlayer || !songTitleDisplay || !songArtistDisplay) {
+      console.error("playTrack: Essential DOM elements missing.");
+      return;
+    }
+
     if (index >= 0 && index < playlist.length) {
       const trackToLoad = playlist[index];
       currentTrackIndex = index;
       selectedIndices = [index];
       lastClickedIndex = index;
-      if (trackToLoad?.path) {
+
+      if (
+        trackToLoad &&
+        typeof trackToLoad.path === "string" &&
+        trackToLoad.path.trim() !== ""
+      ) {
         const needsNewSrc =
           currentlyPlayingInfo?.path !== trackToLoad.path ||
           isPlayerExplicitlyStopped ||
@@ -926,14 +936,72 @@ document.addEventListener("DOMContentLoaded", () => {
           audioPlayer.ended ||
           !audioPlayer.src ||
           audioPlayer.src.endsWith("index.html") ||
+          audioPlayer.src === window.location.href ||
           audioPlayer.src === window.location.href + "#";
+
         if (needsNewSrc) {
-          audioPlayer.src = trackToLoad.path;
+          let systemPath = trackToLoad.path;
+          /* console.log(
+            `playTrack: Loading new source for "${trackToLoad.name}". Original systemPath: "${systemPath}"`
+          ); */
+
+          // Normalize to forward slashes first
+          let normalizedPath = systemPath.replace(/\\/g, "/");
+
+          // Encode only the hash symbol
+          let encodedForSrc = normalizedPath.replace(/#/g, "%23");
+
+          // Prepend "file:///" IF it's an absolute path and doesn't already have it.
+          // Electron's <audio> src often works best with fully qualified file URLs.
+          let finalSrcPath = encodedForSrc;
+          if (!finalSrcPath.startsWith("file:///")) {
+            // Check if it's a Windows absolute path (e.g., C:/...)
+            if (/^[a-zA-Z]:\//.test(finalSrcPath)) {
+              finalSrcPath = "file:///" + finalSrcPath;
+            }
+            // Check if it's a POSIX absolute path (e.g., /home/...)
+            else if (finalSrcPath.startsWith("/")) {
+              // For local absolute POSIX paths, file:// is correct (two slashes after scheme for hostname-less)
+              // but file:/// often works too due to browser leniency.
+              // Let's try with three to be consistent with typical file URL format for absolute paths.
+              finalSrcPath = "file:///" + finalSrcPath.substring(1); // Remove leading '/' before adding 'file:///'
+              // to make it file:///path/to/file
+              // or if it was /C:/... -> file:///C:/...
+              // More robustly for POSIX absolute paths:
+              if (finalSrcPath.startsWith("file:////")) {
+                // If it became file:////foo
+                finalSrcPath = "file://" + encodedForSrc; // Correct to file:///foo
+              } else if (encodedForSrc.startsWith("/")) {
+                finalSrcPath = "file://" + encodedForSrc;
+              }
+            } else {
+              // If it's not recognized as absolute, this is problematic.
+              // For safety, prepend file:/// but this path might be unresolvable.
+              console.warn(
+                `playTrack: Path "${encodedForSrc}" is not a recognized absolute path. Attempting file:/// prefix.`
+              );
+              finalSrcPath = "file:///" + encodedForSrc;
+            }
+          }
+          // Final check for Windows paths that might have ended up with file:////C:/
+          if (
+            finalSrcPath.startsWith("file:////") &&
+            /^[a-zA-Z]:\//.test(finalSrcPath.substring(9))
+          ) {
+            finalSrcPath = "file:///" + finalSrcPath.substring(9);
+          }
+
+         /*  console.log(
+            `playTrack: FINAL setting audioPlayer.src to: "${finalSrcPath}"`
+          ); */
+          audioPlayer.src = finalSrcPath;
+
           currentlyPlayingInfo = { ...trackToLoad };
           updateTrackInfoDisplay(
             trackToLoad.title || trackToLoad.name,
             trackToLoad.artist
           );
+
           if (currentTimeDisplay)
             currentTimeDisplay.textContent = formatTime(0);
           if (durationDisplay)
@@ -943,35 +1011,64 @@ document.addEventListener("DOMContentLoaded", () => {
             seekBar.value = 0;
             seekBar.max = trackToLoad.durationRaw || 0;
           }
-          const pP = audioPlayer.play();
-          if (pP)
-            pP.then(() => {
-              isPlayerExplicitlyStopped = false;
-            }).catch((e) => {
-              updateTrackInfoDisplay(
-                `Error: (${trackToLoad.title || trackToLoad.name})`,
-                "Playback failed"
-              );
-              currentlyPlayingInfo = null;
-              isPlayerExplicitlyStopped = true;
-              if (audioPlayer) {
-                audioPlayer.src = "";
-                audioPlayer.load();
-              }
-            });
-          else isPlayerExplicitlyStopped = true;
+
+          const playPromise = audioPlayer.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                isPlayerExplicitlyStopped = false;
+                /* console.log(
+                  `playTrack: Play started for "${trackToLoad.name}"`
+                ); */
+              })
+              .catch((error) => {
+                console.error(
+                  `playTrack: Error playing "${trackToLoad.name}" with src "${finalSrcPath}":`,
+                  error.message,
+                  error
+                ); // Log full error
+                updateTrackInfoDisplay(
+                  `Error: (${trackToLoad.title || trackToLoad.name})`,
+                  "Playback failed"
+                );
+                currentlyPlayingInfo = null;
+                isPlayerExplicitlyStopped = true;
+                if (audioPlayer) {
+                  audioPlayer.src = "";
+                  audioPlayer.load();
+                }
+              });
+          } else {
+            isPlayerExplicitlyStopped = true;
+            console.error(
+              `playTrack: audioPlayer.play() did not return a Promise for "${trackToLoad.name}".`
+            );
+          }
         } else {
           updateTrackInfoDisplay(
             trackToLoad.title || trackToLoad.name,
             trackToLoad.artist
           );
           if (audioPlayer.paused) {
-            audioPlayer.play().catch((e) => (isPlayerExplicitlyStopped = true));
+            const playPromise = audioPlayer.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((e) => {
+                console.error(
+                  `playTrack: Error resuming "${trackToLoad.name}":`,
+                  e
+                );
+                isPlayerExplicitlyStopped = true;
+              });
+            }
           }
         }
       } else {
-        if (!currentlyPlayingInfo)
-          updateTrackInfoDisplay("Error: Invalid track.", "");
+        if (!currentlyPlayingInfo) {
+          updateTrackInfoDisplay("Error: Invalid track data.", "");
+          console.error(
+            "playTrack: Attempted to play with invalid track data or index out of bounds."
+          );
+        }
       }
     } else {
       if (
@@ -999,6 +1096,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     renderPlaylist();
   }
+  /* Remove tracks from playlist */
   function removeTracks(indicesToRemove) {
     if (!indicesToRemove?.length) return;
     indicesToRemove.sort((a, b) => b - a);
