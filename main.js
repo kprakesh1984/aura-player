@@ -4,6 +4,10 @@ const path = require("path");
 const Store = require("electron-store");
 const fs = require("fs");
 
+// Disable GPU to avoid Chromium errors on Linux (e.g., in WSL or minimal environments)
+app.commandLine.appendSwitch("disable-gpu");
+app.commandLine.appendSwitch("disable-software-rasterizer");
+
 const store = new Store({
   defaults: {
     playlistVisible: false,
@@ -119,7 +123,7 @@ if (!gotTheLock) {
 }
 
 function createMainWindow() {
-  console.log("Main: createMainWindow called.");
+  /* console.log("Main: createMainWindow called."); */
   const lastPlaylistVisibleState = store.get("playlistVisible");
   const lastVolumeState = store.get("lastVolume");
 
@@ -127,12 +131,12 @@ function createMainWindow() {
   if (lastPlaylistVisibleState === true) {
     initialWindowHeight += DOCKED_PLAYLIST_AREA_HEIGHT;
   }
-  console.log(
+  /*  console.log(
     "Main: Initial playlist visible:",
     lastPlaylistVisibleState,
     "Calculated initialWindowHeight:",
     initialWindowHeight
-  );
+  ); */
 
   mainWindow = new BrowserWindow({
     width: PLAYER_FIXED_WIDTH,
@@ -149,14 +153,20 @@ function createMainWindow() {
       devTools: !app.isPackaged,
     },
     show: false,
-    icon: path.join(__dirname, "assets", "icons", "icon.ico"),
+
+    /* Icons for linux is taken from different folder than Windows */
+    icon:
+      process.platform === "linux"
+        ? path.join(__dirname, "assets", "icons", "linux", "512x512.png")
+        : path.join(__dirname, "assets", "icons", "icon.ico"),
   });
 
+  /* console.log("OS : " + process.platform); */
   mainWindow.loadFile("index.html");
   mainWindow.setMenu(null);
 
   mainWindow.webContents.on("did-finish-load", () => {
-    console.log("Main: mainWindow 'did-finish-load'.");
+    /*  console.log("Main: mainWindow 'did-finish-load'."); */
     if (mainWindow && mainWindow.webContents && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(
         "set-initial-playlist-visibility",
@@ -271,7 +281,7 @@ ipcMain.handle("get-audio-metadata", async (event, filePath) => {
 
 // NEW IPC HANDLER for reading dropped folder contents
 ipcMain.handle("read-dropped-folder", async (event, folderPath) => {
-  console.log(`Main: Reading folder for audio files: ${folderPath}`);
+  /* console.log(`Main: Reading folder for audio files: ${folderPath}`); */
   const supportedExtensions = [
     ".mp3",
     ".m4a",
@@ -314,9 +324,9 @@ ipcMain.handle("read-dropped-folder", async (event, folderPath) => {
     );
   }
 
-  console.log(
+  /*  console.log(
     `Main: Found ${audioFiles.length} audio files in and under ${folderPath}.`
-  );
+  ); */
   return audioFiles;
 });
 
@@ -360,10 +370,10 @@ ipcMain.on(
         mainWindow.setMinimumSize(PLAYER_FIXED_WIDTH, targetWindowHeight); // Set min/max for the shorter state
         mainWindow.setMaximumSize(PLAYER_FIXED_WIDTH, targetWindowHeight);
       }
-      console.log(
+      /*  console.log(
         "Main IPC: Calculated targetWindowHeight:",
         targetWindowHeight
-      );
+      ); */
       mainWindow.setSize(PLAYER_FIXED_WIDTH, targetWindowHeight, false); // Set the actual size
       store.set("playlistVisible", isPlaylistNowVisible);
     }

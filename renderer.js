@@ -1,6 +1,6 @@
 // renderer.js
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("Renderer DOMContentLoaded: Script starting.");
+  /*   console.log("Renderer DOMContentLoaded: Script starting."); */
 
   // DOM Element References
   const audioPlayer = document.getElementById("audioPlayer");
@@ -153,11 +153,11 @@ document.addEventListener("DOMContentLoaded", () => {
           const d = tempAudio.duration;
           tempAudio.src = "";
           const fallbackEndTime = performance.now();
-          console.log(
+          /*  console.log(
             `getAudioDuration fallback for ${filename} took ${(
               fallbackEndTime - fallbackStartTime
             ).toFixed(2)}ms. Found: ${d}`
-          );
+          ); */
           resolve(isNaN(d) ? null : d);
         }
       };
@@ -707,50 +707,36 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     playlistUL.scrollTop = scrollTop;
   }
+
   async function addFilesToPlaylist(
     filePaths,
     playFirstNew = false,
     insertAtIndex = -1
   ) {
     const oldLen = playlist.length;
-    let firstNewIdxInPlaylist = -1;
-    let newTracksAddedCount = 0;
+    let firstNewIdxInPlaylist = -1; // To track the actual index of the first new playable song
+
+    // Store current display to restore if needed
     const originalDisplayTitle =
       songTitleDisplay?.textContent || PLACEHOLDER_TITLE;
     const originalDisplayArtist =
       songArtistDisplay?.textContent || PLACEHOLDER_ARTIST;
+
     const existingPathsInPlaylist = new Set(playlist.map((t) => t.path));
-    updateTrackInfoDisplay(
-      filePaths.length > 1 ? "Adding songs..." : "Loading song...",
-      ""
-    );
-    let tempNewTracks = [];
-    for (let i = 0; i < filePaths.length; i++) {
-      const path = filePaths[i];
-      if (existingPathsInPlaylist.has(path)) {
-        continue;
+
+    let uniqueFilePathsToProcess = [];
+    for (const filePath of filePaths) {
+      if (!existingPathsInPlaylist.has(filePath)) {
+        uniqueFilePathsToProcess.push(filePath);
+        existingPathsInPlaylist.add(filePath); // Add to set here to avoid duplicates within this batch too
+      } else {
+        /*  console.log(`DEBUG: Skipping duplicate (initial filter): ${filePath}`); */
       }
-      const name = getFileName(path, false);
-      if (filePaths.length > 1 && i < 2)
-        updateTrackInfoDisplay(
-          `Loading: ${name}`,
-          `(${i + 1}/${filePaths.length})`
-        );
-      const placeholderTrack = {
-        path,
-        name,
-        title: name,
-        artist: "",
-        album: "",
-        durationRaw: null,
-        durationFormatted: "...",
-        isLoadingMetadata: true,
-      };
-      tempNewTracks.push(placeholderTrack);
-      existingPathsInPlaylist.add(path);
-      newTracksAddedCount++;
     }
-    if (newTracksAddedCount === 0) {
+
+    if (uniqueFilePathsToProcess.length === 0) {
+      /* console.log("DEBUG: No new unique files to add."); */
+      // Restore original display if it was changed to loading
       if (
         !currentlyPlayingInfo &&
         (originalDisplayTitle.startsWith("Loading:") ||
@@ -762,51 +748,121 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       return;
     }
-    if (insertAtIndex !== -1 && insertAtIndex <= playlist.length) {
-      playlist.splice(insertAtIndex, 0, ...tempNewTracks);
-      firstNewIdxInPlaylist = insertAtIndex;
-      if (currentTrackIndex >= insertAtIndex)
-        currentTrackIndex += newTracksAddedCount;
-      selectedIndices = selectedIndices
-        .map((idx) => (idx >= insertAtIndex ? idx + newTracksAddedCount : idx))
-        .filter((idx) => idx < playlist.length);
-      if (isShuffleActive && originalPlaylistOrder)
-        originalPlaylistOrder.splice(
-          insertAtIndex,
-          0,
-          ...tempNewTracks.map((t) => ({ ...t }))
-        );
-    } else {
-      playlist.push(...tempNewTracks);
-      firstNewIdxInPlaylist = oldLen;
-      if (isShuffleActive && originalPlaylistOrder) {
-        tempNewTracks.forEach((nt) => {
-          if (!originalPlaylistOrder.some((ot) => ot.path === nt.path))
-            originalPlaylistOrder.push({ ...nt });
-        });
-      }
+
+    // Initial message before loop
+    if (uniqueFilePathsToProcess.length > 1) {
+      updateTrackInfoDisplay(
+        "Adding songs...",
+        `(0/${uniqueFilePathsToProcess.length})`
+      );
+    } else if (uniqueFilePathsToProcess.length === 1) {
+      updateTrackInfoDisplay(
+        `Loading: ${getFileName(uniqueFilePathsToProcess[0], false)}`,
+        ""
+      );
     }
-    renderPlaylist();
+
+    let tempNewTracksPlaceholders = [];
+
+    // Create placeholders for all unique new files
+    for (let i = 0; i < uniqueFilePathsToProcess.length; i++) {
+      const path = uniqueFilePathsToProcess[i];
+      const name = getFileName(path, false); // Name without extension for initial display
+
+      // Update loading message for each file being processed
+      if (uniqueFilePathsToProcess.length > 1) {
+        updateTrackInfoDisplay(
+          `Loading: ${name}`,
+          `(${i + 1}/${uniqueFilePathsToProcess.length})` // Use loop index + 1 for current count
+        );
+      }
+      // For a single file, the "Loading: [songname]" message is already set before this loop
+
+      const placeholderTrack = {
+        path: path,
+        name: name,
+        title: name, // Use filename as placeholder title
+        artist: "",
+        album: "",
+        durationRaw: null,
+        durationFormatted: "...", // Indicate loading
+        isLoadingMetadata: true,
+      };
+      tempNewTracksPlaceholders.push(placeholderTrack);
+    }
+
+    // Add placeholders to playlist and render immediately
+    let newTracksAddedCount = tempNewTracksPlaceholders.length; // Actual count of tracks being added
+
+    if (newTracksAddedCount > 0) {
+      if (insertAtIndex !== -1 && insertAtIndex <= playlist.length) {
+        playlist.splice(insertAtIndex, 0, ...tempNewTracksPlaceholders);
+        firstNewIdxInPlaylist = insertAtIndex;
+        if (currentTrackIndex >= insertAtIndex)
+          currentTrackIndex += newTracksAddedCount;
+        selectedIndices = selectedIndices
+          .map((idx) =>
+            idx >= insertAtIndex ? idx + newTracksAddedCount : idx
+          )
+          .filter((idx) => idx < playlist.length);
+        if (isShuffleActive && originalPlaylistOrder)
+          originalPlaylistOrder.splice(
+            insertAtIndex,
+            0,
+            ...tempNewTracksPlaceholders.map((t) => ({ ...t }))
+          );
+      } else {
+        playlist.push(...tempNewTracksPlaceholders);
+        firstNewIdxInPlaylist = oldLen;
+        if (isShuffleActive && originalPlaylistOrder) {
+          tempNewTracksPlaceholders.forEach((nt) => {
+            if (!originalPlaylistOrder.some((ot) => ot.path === nt.path))
+              originalPlaylistOrder.push({ ...nt });
+          });
+        }
+      }
+      renderPlaylist(); // Render with placeholders
+    }
+
+    // Restore track info display if nothing is playing yet AND we are not about to play the first new track
+    // This needs to be careful not to overwrite an active "Loading: specific_song" message for a single add
     if (!currentlyPlayingInfo && !(playFirstNew && newTracksAddedCount > 0)) {
       if (
         originalDisplayTitle === "Adding songs..." ||
-        originalDisplayTitle.startsWith("Loading:")
-      )
+        (uniqueFilePathsToProcess.length > 1 &&
+          originalDisplayTitle.startsWith("Loading:"))
+      ) {
         updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
-      else if (!currentlyPlayingInfo)
+      } else if (
+        uniqueFilePathsToProcess.length === 1 &&
+        originalDisplayTitle.startsWith("Loading:")
+      ) {
+        // Keep the "Loading: specific_song" message
+      } else if (!currentlyPlayingInfo) {
+        // If it was some other title before "Adding songs..."
         updateTrackInfoDisplay(originalDisplayTitle, originalDisplayArtist);
+      }
     }
-    for (let i = 0; i < tempNewTracks.length; i++) {
-      const placeholder = tempNewTracks[i];
+
+    // Asynchronously fetch metadata for the newly added tracks
+    /*   console.log(
+      `Renderer: Starting metadata fetch for ${newTracksAddedCount} new tracks.`
+    ); */
+    for (const placeholder of tempNewTracksPlaceholders) {
       const metadataFromIPC = await fetchTrackMetadata(placeholder.path);
       let durationRaw = metadataFromIPC.duration;
       let durationFormatted = "--:--";
+
       if (durationRaw == null || isNaN(durationRaw)) {
+        console.warn(
+          `Renderer: Duration for ${placeholder.name} NOT VALID from IPC (value: ${durationRaw}). FALLING BACK to slow getAudioDuration.`
+        );
         durationRaw = await getAudioDuration(placeholder.path);
       }
       if (durationRaw != null && !isNaN(durationRaw)) {
         durationFormatted = formatTime(durationRaw);
       }
+
       const trackInPlaylist = playlist.find((t) => t.path === placeholder.path);
       if (trackInPlaylist) {
         trackInPlaylist.title = metadataFromIPC.title;
@@ -815,26 +871,32 @@ document.addEventListener("DOMContentLoaded", () => {
         trackInPlaylist.durationRaw = durationRaw;
         trackInPlaylist.durationFormatted = durationFormatted;
         trackInPlaylist.isLoadingMetadata = false;
+
+        // If this is the currently playing info (e.g. if playFirstNew was true and it started playing with placeholder info)
         if (
           currentlyPlayingInfo &&
           currentlyPlayingInfo.path === trackInPlaylist.path
         ) {
-          currentlyPlayingInfo = { ...trackInPlaylist };
+          currentlyPlayingInfo = { ...trackInPlaylist }; // Update with full metadata
           updateTrackInfoDisplay(
             currentlyPlayingInfo.title || currentlyPlayingInfo.name,
             currentlyPlayingInfo.artist
           );
         }
       }
-      renderPlaylist();
+      renderPlaylist(); // Re-render to show updated info for this track
     }
+    /*  console.log("Renderer: Metadata fetching complete for new tracks."); */
+
+    // Final check for track info display if nothing ended up playing
     if (
       !currentlyPlayingInfo &&
-      (originalDisplayTitle === "Adding songs..." ||
-        originalDisplayTitle.startsWith("Loading:"))
+      (songTitleDisplay?.textContent === "Adding songs..." ||
+        songTitleDisplay?.textContent?.startsWith("Loading:"))
     ) {
       updateTrackInfoDisplay(PLACEHOLDER_TITLE, PLACEHOLDER_ARTIST);
     }
+
     if (
       playFirstNew &&
       newTracksAddedCount > 0 &&
@@ -847,15 +909,26 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     }
   }
+
+  /* Function to play tracks */
   function playTrack(index, calledFrom = "unknown") {
-    console.log(`DEBUG: playTrack - ${calledFrom} index: ${index}`);
-    if (!audioPlayer || !songTitleDisplay || !songArtistDisplay) return;
+    /*  console.log(`DEBUG: playTrack - Called from "${calledFrom}" with index: ${index}`);*/
+    if (!audioPlayer || !songTitleDisplay || !songArtistDisplay) {
+      console.error("playTrack: Essential DOM elements missing.");
+      return;
+    }
+
     if (index >= 0 && index < playlist.length) {
       const trackToLoad = playlist[index];
       currentTrackIndex = index;
       selectedIndices = [index];
       lastClickedIndex = index;
-      if (trackToLoad?.path) {
+
+      if (
+        trackToLoad &&
+        typeof trackToLoad.path === "string" &&
+        trackToLoad.path.trim() !== ""
+      ) {
         const needsNewSrc =
           currentlyPlayingInfo?.path !== trackToLoad.path ||
           isPlayerExplicitlyStopped ||
@@ -863,14 +936,72 @@ document.addEventListener("DOMContentLoaded", () => {
           audioPlayer.ended ||
           !audioPlayer.src ||
           audioPlayer.src.endsWith("index.html") ||
+          audioPlayer.src === window.location.href ||
           audioPlayer.src === window.location.href + "#";
+
         if (needsNewSrc) {
-          audioPlayer.src = trackToLoad.path;
+          let systemPath = trackToLoad.path;
+          /* console.log(
+            `playTrack: Loading new source for "${trackToLoad.name}". Original systemPath: "${systemPath}"`
+          ); */
+
+          // Normalize to forward slashes first
+          let normalizedPath = systemPath.replace(/\\/g, "/");
+
+          // Encode only the hash symbol
+          let encodedForSrc = normalizedPath.replace(/#/g, "%23");
+
+          // Prepend "file:///" IF it's an absolute path and doesn't already have it.
+          // Electron's <audio> src often works best with fully qualified file URLs.
+          let finalSrcPath = encodedForSrc;
+          if (!finalSrcPath.startsWith("file:///")) {
+            // Check if it's a Windows absolute path (e.g., C:/...)
+            if (/^[a-zA-Z]:\//.test(finalSrcPath)) {
+              finalSrcPath = "file:///" + finalSrcPath;
+            }
+            // Check if it's a POSIX absolute path (e.g., /home/...)
+            else if (finalSrcPath.startsWith("/")) {
+              // For local absolute POSIX paths, file:// is correct (two slashes after scheme for hostname-less)
+              // but file:/// often works too due to browser leniency.
+              // Let's try with three to be consistent with typical file URL format for absolute paths.
+              finalSrcPath = "file:///" + finalSrcPath.substring(1); // Remove leading '/' before adding 'file:///'
+              // to make it file:///path/to/file
+              // or if it was /C:/... -> file:///C:/...
+              // More robustly for POSIX absolute paths:
+              if (finalSrcPath.startsWith("file:////")) {
+                // If it became file:////foo
+                finalSrcPath = "file://" + encodedForSrc; // Correct to file:///foo
+              } else if (encodedForSrc.startsWith("/")) {
+                finalSrcPath = "file://" + encodedForSrc;
+              }
+            } else {
+              // If it's not recognized as absolute, this is problematic.
+              // For safety, prepend file:/// but this path might be unresolvable.
+              console.warn(
+                `playTrack: Path "${encodedForSrc}" is not a recognized absolute path. Attempting file:/// prefix.`
+              );
+              finalSrcPath = "file:///" + encodedForSrc;
+            }
+          }
+          // Final check for Windows paths that might have ended up with file:////C:/
+          if (
+            finalSrcPath.startsWith("file:////") &&
+            /^[a-zA-Z]:\//.test(finalSrcPath.substring(9))
+          ) {
+            finalSrcPath = "file:///" + finalSrcPath.substring(9);
+          }
+
+         /*  console.log(
+            `playTrack: FINAL setting audioPlayer.src to: "${finalSrcPath}"`
+          ); */
+          audioPlayer.src = finalSrcPath;
+
           currentlyPlayingInfo = { ...trackToLoad };
           updateTrackInfoDisplay(
             trackToLoad.title || trackToLoad.name,
             trackToLoad.artist
           );
+
           if (currentTimeDisplay)
             currentTimeDisplay.textContent = formatTime(0);
           if (durationDisplay)
@@ -880,35 +1011,64 @@ document.addEventListener("DOMContentLoaded", () => {
             seekBar.value = 0;
             seekBar.max = trackToLoad.durationRaw || 0;
           }
-          const pP = audioPlayer.play();
-          if (pP)
-            pP.then(() => {
-              isPlayerExplicitlyStopped = false;
-            }).catch((e) => {
-              updateTrackInfoDisplay(
-                `Error: (${trackToLoad.title || trackToLoad.name})`,
-                "Playback failed"
-              );
-              currentlyPlayingInfo = null;
-              isPlayerExplicitlyStopped = true;
-              if (audioPlayer) {
-                audioPlayer.src = "";
-                audioPlayer.load();
-              }
-            });
-          else isPlayerExplicitlyStopped = true;
+
+          const playPromise = audioPlayer.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                isPlayerExplicitlyStopped = false;
+                /* console.log(
+                  `playTrack: Play started for "${trackToLoad.name}"`
+                ); */
+              })
+              .catch((error) => {
+                console.error(
+                  `playTrack: Error playing "${trackToLoad.name}" with src "${finalSrcPath}":`,
+                  error.message,
+                  error
+                ); // Log full error
+                updateTrackInfoDisplay(
+                  `Error: (${trackToLoad.title || trackToLoad.name})`,
+                  "Playback failed"
+                );
+                currentlyPlayingInfo = null;
+                isPlayerExplicitlyStopped = true;
+                if (audioPlayer) {
+                  audioPlayer.src = "";
+                  audioPlayer.load();
+                }
+              });
+          } else {
+            isPlayerExplicitlyStopped = true;
+            console.error(
+              `playTrack: audioPlayer.play() did not return a Promise for "${trackToLoad.name}".`
+            );
+          }
         } else {
           updateTrackInfoDisplay(
             trackToLoad.title || trackToLoad.name,
             trackToLoad.artist
           );
           if (audioPlayer.paused) {
-            audioPlayer.play().catch((e) => (isPlayerExplicitlyStopped = true));
+            const playPromise = audioPlayer.play();
+            if (playPromise !== undefined) {
+              playPromise.catch((e) => {
+                console.error(
+                  `playTrack: Error resuming "${trackToLoad.name}":`,
+                  e
+                );
+                isPlayerExplicitlyStopped = true;
+              });
+            }
           }
         }
       } else {
-        if (!currentlyPlayingInfo)
-          updateTrackInfoDisplay("Error: Invalid track.", "");
+        if (!currentlyPlayingInfo) {
+          updateTrackInfoDisplay("Error: Invalid track data.", "");
+          console.error(
+            "playTrack: Attempted to play with invalid track data or index out of bounds."
+          );
+        }
       }
     } else {
       if (
@@ -936,6 +1096,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     renderPlaylist();
   }
+  /* Remove tracks from playlist */
   function removeTracks(indicesToRemove) {
     if (!indicesToRemove?.length) return;
     indicesToRemove.sort((a, b) => b - a);
@@ -1006,14 +1167,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function playNextTrackLogic(reason = "unknown_next") {
-    console.log(
+    /*  console.log(
       "playNextTrackLogic called by:",
       reason,
       ". Current track index:",
       currentTrackIndex,
       "Playlist length:",
       playlist.length
-    );
+    ); */
     if (playlist.length === 0) {
       isPlayerExplicitlyStopped = true;
       currentlyPlayingInfo = null;
@@ -1041,9 +1202,9 @@ document.addEventListener("DOMContentLoaded", () => {
     let newIndexToPlay = currentTrackIndex + 1;
 
     if (newIndexToPlay >= playlist.length) {
-      console.log(
+      /*  console.log(
         "Reached end of playlist. Player will stop and reset last song."
-      );
+      ); */
       isPlayerExplicitlyStopped = true;
       if (audioPlayer && currentlyPlayingInfo) {
         audioPlayer.pause();
@@ -1173,9 +1334,9 @@ document.addEventListener("DOMContentLoaded", () => {
         audioPlayer.paused &&
         isPlayerExplicitlyStopped
       ) {
-        console.log(
+        /*  console.log(
           "Next clicked on last song (player stopped at its end): Doing nothing further."
-        );
+        ); */
         // Optionally ensure UI reflects it's at 0:00 if not already
         if (
           audioPlayer.currentTime !== 0 &&
@@ -1195,9 +1356,9 @@ document.addEventListener("DOMContentLoaded", () => {
         !audioPlayer.paused &&
         !isPlayerExplicitlyStopped
       ) {
-        console.log(
+        /* console.log(
           "Next clicked on last song (currently playing): Doing nothing."
-        );
+        ); */
         return;
       }
       playNextTrackLogic("next_button_click");
@@ -1291,9 +1452,9 @@ document.addEventListener("DOMContentLoaded", () => {
               dirFile.path &&
               window.electronAPI?.getFilesFromDroppedFolder
             ) {
-              console.log(
+              /* console.log(
                 `Renderer: Requesting main to read folder: ${dirFile.path}`
-              );
+              ); */
               folderPromises.push(
                 window.electronAPI
                   .getFilesFromDroppedFolder(dirFile.path)
@@ -1529,17 +1690,20 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   } else console.warn("File open IPC missing.");
 
-  // --- Select All (Ctrl+A / Cmd+A) for Playlist ---
+  /* --- Select All (Ctrl+A / Cmd+A) for Playlist */
   document.addEventListener("keydown", (event) => {
+    // Select All (Ctrl+A / Cmd+A)
     if (
       (event.ctrlKey || event.metaKey) &&
       (event.key === "a" || event.key === "A")
     ) {
+      // Check if the playlist is visible and has items
       if (
         playlistContainer &&
         !playlistContainer.classList.contains("hidden") &&
         playlist.length > 0
       ) {
+        // Prevent hijacking Ctrl+A if an input field (not part of player UI) is focused
         let targetIsSafeForSelectAll = true;
         if (document.activeElement) {
           const tagName = document.activeElement.tagName.toLowerCase();
@@ -1552,23 +1716,73 @@ document.addEventListener("DOMContentLoaded", () => {
               mainPlayerPanel.contains(document.activeElement)
             )
           ) {
+            // If an input/textarea is focused AND it's not within our playlist or main player panel,
+            // then don't hijack Ctrl+A.
             targetIsSafeForSelectAll = false;
           }
         }
+
         if (targetIsSafeForSelectAll) {
-          event.preventDefault();
+          event.preventDefault(); // Prevent default browser text selection behavior
+
           selectedIndices = Array.from(
             { length: playlist.length },
             (_, i) => i
-          );
-          if (playlist.length > 0 && currentTrackIndex === -1)
+          ); // Select all indices
+
+          // Optionally, set currentTrackIndex and lastClickedIndex
+          if (playlist.length > 0 && currentTrackIndex === -1) {
+            // If no track was current
             currentTrackIndex = 0;
-          lastClickedIndex = currentTrackIndex !== -1 ? currentTrackIndex : 0;
-          renderPlaylist();
+          }
+          lastClickedIndex = currentTrackIndex !== -1 ? currentTrackIndex : 0; // For subsequent shift-clicks
+
+          renderPlaylist(); // Update the UI to show all tracks selected
+          // console.log("Ctrl+A: All tracks selected in playlist.");
+        }
+      }
+    }
+    // MODIFICATION: Delete Selected Tracks with "Delete" or "Backspace" key
+    else if (event.key === "Delete" || event.key === "Backspace") {
+      // Check if playlist is visible and there are selected items
+      if (
+        playlistContainer &&
+        !playlistContainer.classList.contains("hidden") &&
+        selectedIndices.length > 0
+      ) {
+        // Prevent delete if an input field (like DevTools console or a future search bar) is focused
+        let targetIsSafeForDelete = true;
+        if (document.activeElement) {
+          const tagName = document.activeElement.tagName.toLowerCase();
+          if (
+            tagName === "input" ||
+            tagName === "textarea" ||
+            tagName === "select"
+          ) {
+            // If an input/textarea is focused AND it's not within our playlist or main player panel,
+            // then don't hijack the Delete/Backspace key.
+            if (
+              !(
+                playlistUL.contains(document.activeElement) ||
+                mainPlayerPanel.contains(document.activeElement)
+              )
+            ) {
+              targetIsSafeForDelete = false;
+            }
+          }
+        }
+
+        if (targetIsSafeForDelete) {
+          event.preventDefault(); // Prevent default browser actions (like back navigation for Backspace)
+          // console.log("Delete/Backspace key pressed. Removing selected tracks:", selectedIndices);
+          removeTracks([...selectedIndices]); // Pass a copy as removeTracks modifies the array
+          // selectedIndices will be reset/updated within removeTracks or by the next renderPlaylist
         }
       }
     }
   });
+
+  // ... (rest of your renderer.js: Initial Setup, etc.) ...
 
   // --- Initial Setup ---
   renderPlaylist();
@@ -1615,5 +1829,5 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
   }, 100);
-  console.log("Renderer: Script finished initialization.");
+  /*  console.log("Renderer: Script finished initialization."); */
 });
