@@ -50,11 +50,11 @@ Your personal, lightweight music player for enjoying your local audio collection
 
 **Option 1: Using **\`\`** package**
 
-1. Download the `.deb` file: `symphonie_1.0.8_amd64.deb`
+1. Download the `.deb` file: `symphonie_1.0.x_amd64.deb`
 2. Install it:
 
 ```bash
-sudo dpkg -i symphonie_1.0.8_amd64.deb
+sudo dpkg -i symphonie_1.0.x_amd64.deb
 sudo apt-get install -f  # Fix any missing dependencies
 ```
 
@@ -77,17 +77,17 @@ or
 
 **Option 2: Using AppImage (Works on most Linux distros)**
 
-1. Download the file: `Symphonie-1.0.8.AppImage`
+1. Download the file: `Symphonie-1.0.x.AppImage`
 2. Make it executable:
 
 ```bash
-chmod +x Symphonie-1.0.8.AppImage
+chmod +x Symphonie-1.0.x.AppImage
 ```
 
 3. Run the AppImage:
 
 ```bash
-./Symphonie-1.0.8.AppImage
+./Symphonie-1.0.x.AppImage
 ```
 
 > 💡 The AppImage includes all dependencies. Recommended if you face any issues with `.deb`.
