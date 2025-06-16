@@ -1,6 +1,6 @@
 {
   "name": "symphonie",
-  "version": "1.0.11",
+  "version": "1.0.12",
   "description": "A simple music player built with Electron.",
   "main": "main.js",
   "author": "Rakesh KP <rakeshkpk@gmail.com>",
